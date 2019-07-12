@@ -10,32 +10,38 @@
 	errorCreatingOutputFile db 'Nepavyko sukurti rezultatu failo. Terminuojama.', 0Ah, 024h
 	errorOpeningOutputFile db 'Nepavyko atidaryti rezultatu failo. Terminuojama.', 0Ah, 024h
 	errorWritingToOutputFile db 'Nepavyko irasyt i rezultatu faila. Terminuojama.', 0Ah, 024h
-	reachedEOF db 26 dup('-'), 'Failas nuskaitytas iki galo!', 26 dup('-'), 024h
+	strReachedEOF db 26 dup('-'), 'Failas nuskaitytas iki galo!', 26 dup('-'), 024h
 	;								strings
 	
 	;								fileVars
 	outFilePtr dw ?
 	filePtr dw ?
-	currentIP dw 0100h
-	operationByteCount db 00
-	operationBytes db 10 dup(?)
 	;								fileVars
 	
 	;								fileReading
+	extraByteExists db 00		;0- pati failo pradzia ir reikia nuskaityt 2 baitus; 1- vidurys failo ir reikia tik dar vieno baito
+	byteAndExtraByte db ?, ?
 	unoByte db ?
 	dosByte db ?
 	tresByte db ?
 	cuatroByte db ?
 	cincoByte db ?
 	
-	printHowMany db 080h
-	printHowManyCopy db ?
-	printThis db 080h dup(?)
-	printThisCopy db 080h dup(?)
-	
+	reachedEOF db 00h
 	reuseByte db 00, ?			;+0 ~ ar pernaudot, +1 ~ ka pernaudot
-	redirectByte db 00, ?		;+0 ~ ar buvo nukreipta i kita seg., +1 ~ koks nukreipimas ('E', 'C', 'S', 'D')
+	redirectByte db 00, ?			;+0 ~ ar buvo nukreipta i kita seg., +1 ~ koks nukreipimas (26h, 2Eh, 36h, 3Eh)
 	;								fileReading
+	
+	;								fileWriting
+	currentIP dw 0100h
+	operationByteCount db 00
+	operationBytes db 10 dup(?)
+	
+	printHowMany db 080h
+	printThis db 080h dup(?)
+	printHowManyCopy db ?
+	printThisCopy db 080h dup(?)
+	;								fileWriting
 	
 	;								komandos
 	op_MOV		db '	MOV$'
@@ -133,10 +139,96 @@
 	op_ESC		db '	ESC$'		;neegzituoja????
 	op_LOCK		db '	LOCK$'
 	
+	op_NOP		db '	NOP$'
 	op_UNUSED	db ' (unused)$'
-	
 	op_unknown	db 09h, 'DB $'
 	;								komandos
+	
+	;								visosFPUKomandos
+	op_FADD		db '	FADD$'		;~D8xx
+	op_FMUL		db '	FMUL$'
+	op_FCOM		db '	FCOM$'
+	op_FCOMP	db '	FCOMP$'
+	op_FSUB		db '	FSUB$'
+	op_FSUBR	db '	FSUBR$'
+	op_FDIV		db '	FDIV$'		;~D8xx
+	op_FDIVR	db '	FDIVR$'		;~D9xx
+	op_FLD		db '	FLD$'
+	op_FST		db '	FST$'
+	op_FSTP		db '	FSTP$'
+	op_FLDENV	db '	FLDENV$'
+	op_FLDCW	db '	FLDCW$'
+	op_FSTENV	db '	FSTENV$'
+	op_FSTCW	db '	FSTCW$'
+	op_FXCH		db '	FXCH$'
+	op_FCHS		db '	FCHS$'
+	op_FABS		db '	FABS$'
+	op_FTST		db '	FTST$'
+	op_FXAM		db '	FXAM$'
+	op_FLD1		db '	FLD1$'
+	op_FLDL2T	db '	FLDL2T$'
+	op_FLDL2E	db '	FLDL2E$'
+	op_FLDPI	db '	FLDPI$'
+	op_FLDLG2	db '	FLDLG2$'
+	op_FLDLN2	db '	FLDLN2$'
+	op_FLDZ		db '	FLDZ$'
+	op_F2XM1	db '	F2XM1$'
+	op_FYL2X	db '	FYL2X$'
+	op_FPTAN	db '	FPTAN$'
+	op_FPATAN	db '	FPATAN$'
+	op_FXTRAC	db '	FXTRAC$'
+	op_FPREM1	db '	FPREM1$'
+	op_FDECST	db '	FDECST$'
+	op_FINCST	db '	FINCST$'
+	op_FPREM	db '	FPREM$'
+	op_FYL2XP1	db '	FYL2XP1$'
+	op_FSQRT	db '	FSQRT$'
+	op_FSINCO	db '	FSINCO$'
+	op_FRNDIN	db '	FRNDIN$'
+	op_FSCALE	db '	FSCALE$'
+	op_FSIN		db '	FSIN$'
+	op_FCOS		db '	FCOS$'		;~D9xx
+	op_FIADD	db '	FIADD$'		;~DAxx
+	op_FIMUL	db '	FIMUL$'
+	op_FICOM	db '	FICOM$'
+	op_FICOMP	db '	FICOMP$'
+	op_FISUB	db '	FISUB$'
+	op_FISUBR	db '	FISUBR$'
+	op_FIDIV	db '	FIDIV$'
+	op_FIDIVR	db '	FIDIVR$'
+	op_FCMOVB	db '	FCMOVB$'
+	op_FCMOVE	db '	FCMOVE$'
+	op_FCMOVU	db '	FCMOVU$'
+	op_FUCOMP	db '	FUCOMP$'	;~DAxx
+	op_FILD		db '	FILD$'		;~DBxx
+	op_FIST		db '	FIST$'
+	op_FISTP	db '	FISTP$'
+	op_FCMOVN	db '	FCMOVN$'
+	op_FENI		db '	FENI$'
+	op_FDISI	db '	FDISI$'
+	op_FCLEX	db '	FCLEX$'
+	op_FINIT	db '	FINIT$'
+	op_FSETPM	db '	FSETPM$'
+	op_FCOMI	db '	FCOMI$'		;~DBxx
+	op_FRSTOR	db '	FRSTOR$'	;~DDxx
+	op_FSAVE	db '	FSAVE$'
+	op_FSTSW	db '	FSTSW$'
+	op_FFREE	db '	FFREE$'		;~DDxx
+	op_FADDP	db '	FADDP$'		;~DExx
+	op_FMULP	db '	FMULP$'
+	op_FCOMPP	db '	FCOMPP$'
+	op_FSUBRP	db '	FSUBRP$'
+	op_FSUBP	db '	FSUBP$'
+	op_FDIVRP	db '	FDIVRP$'
+	op_FDIVP	db '	FDIVP$'		;~DExx
+	op_FBLD		db '	FBLD$'		;~DFxx
+	op_FBSTP	db '	FBSTP$'
+	op_FFREEP	db '	FFREEP$'
+	op_FCOMIP	db '	FCOMIP$'	;~DFxx
+	
+	op_FNOP		db '	FNOP$'
+	FPU_ST		db ' ST$'
+	;								visosFPUKomandos
 	
 	;								registrai
 	regAX db ' AX$'
@@ -169,11 +261,12 @@
 	;								registrai
 	
 	;								EA calc
-	WordOrBytePtr db ?			;auto, kai byte ptr[WordOrBytePtr] == 1
-	eaFAR db ' FAR$'			;kai byte ptr[WordOrBytePtr] == 2
+	WordOrBytePtr db ?			;auto, kai byte ptr[WordOrBytePtr] == 01; neraso, kai == 00
+	eaFAR db ' FAR$'			;kai byte ptr[WordOrBytePtr] == 'F'
 	
-	eaWordPtr db ' WORD PTR$'	;override, kai 'W'
-	eaBytePtr db ' BYTE PTR$'	;override, kai 'B'
+	eaWordPtr db ' WORD PTR$'		;kai byte ptr[WordOrBytePtr] == 'W'
+	eaBytePtr db ' BYTE PTR$'		;kai byte ptr[WordOrBytePtr] == 'B'
+	eaFloatPtr db ' FLOAT PTR$'		;kai byte ptr[WordOrBytePtr] == '.'
 	
 	eaBXSI db ' [BX+SI]$'
 	eaBXDI db ' [BX+DI]$'
@@ -198,8 +291,6 @@
 	OPKByteBinary db 8 dup (?)
 	addressByteBinary db 8 dup (?)
 	
-;	enterEnter db '[ENTER]$'
-;	improvPause db 3, 0, 0, 0, 0
 	debug db 75 dup ('_'), 'debug', '$'
 ;__________________________________________________________________________________________________
 .code
@@ -222,15 +313,6 @@ locals @@
 		pop dx
 	endm
 	
-	readByte macro which	;I kur skaityti
-		push dx
-		
-		lea dx, which
-		call readByteProc
-		
-		pop dx
-	endm
-	
 	printCharNoWrite macro char
 		push ax
 		push dx
@@ -249,15 +331,30 @@ locals @@
 		pop dx
 	endm
 	
+	readByte macro which	;I kur skaityti
+		push si
+		
+		lea si, which
+		call readByteProc
+		
+		pop si
+	endm
+	
+	printImmediate macro byWhat			;'W', jei pagal W bita, kuris ne 0-iame OPK bite - BX ~ kur W bitas
+		push ax					;'w', jei pagal W bita, kuris 0-iame OPK bite
+							;'m', jei pagal adresacijos baito mod
+		mov ah, byWhat				;'1', jei overridint i 1 baito spausdinima (default)
+		call printImmediateProc			;'2', jei overridint i 2 baitu spausdinima
+		
+		pop ax
+	endm
+	
 	writeStr proc
 		push ax
 		push bx
 		push cx
 		push di
 		push si
-		
-		mov ah, 09h
-		int 21h
 		
 		mov di, dx
 		mov cx, 0FFFFh
@@ -266,14 +363,6 @@ locals @@
 		mov cx, di
 		sub cx, dx
 		dec cx		;kiek tame stringe charu neskaitant $
-		
-	;	mov bx, word ptr[outFilePtr]
-	;	mov ah, 040h
-	;	int 21h
-	;	jnc @@writeSuccess
-	;	printStr errorWritingToOutputFile
-	;	.exit
-	;	@@writeSuccess:
 		
 		mov bh, 00
 		mov bl, byte ptr[printHowMany]
@@ -291,34 +380,11 @@ locals @@
 		ret
 	endp
 	
-	printImmediate macro byWhat			;'W', jei pagal W bita, kuris ne 0-iame OPK bite - BX ~ kur W bitas
-		push ax							;'w', jei pagal W bita, kuris 0-iame OPK bite
-										;'m', jei pagal adresacijos baito mod
-		mov ah, byWhat					;'1', jei overridint i 1 baito spausdinima (default)
-		call printImmediateProc			;'2', jei overridint i 2 baitu spausdinima
-		
-		pop ax
-	endm
-	
 	writeChar proc
 		push ax
 		push bx
 		push cx
 		push dx
-		
-		mov ah, 02h
-		int 21h
-		
-	;	mov byte ptr[printThis], dl
-	;	mov bx, word ptr[outFilePtr]
-	;	mov cx, 0001h
-	;	lea dx, printThis
-	;	mov ah, 040h
-	;	int 21h
-	;	jnc @@writeSuccess
-	;	printStr errorWritingToOutputFile
-	;	.exit
-	;	@@writeSuccess:
 		
 		mov bh, 00h
 		mov bl, byte ptr[printHowMany]
@@ -405,36 +471,42 @@ locals @@
 			ret
 	endp
 	
-	readByteProc proc
+	readByteProc proc		;si ateina is macro
 		push ax
 		push bx
 		push cx
 		
 		mov ah, 03Fh
 		mov bx, word ptr[filePtr]
+		cmp byte ptr[extraByteExists], 01h
+		jne @@readDuo
 		mov cx, 1
+		lea dx, byteAndExtraByte+1
+		jmp @@nowRead
+		@@readDuo:
+		mov byte ptr[extraByteExists], 01h
+		mov cx, 2
+		lea dx, byteAndExtraByte
+		@@nowRead:
 		int 21h
 		jnc @@skaitymasVeikia
 		printStr errorReadingFile
 		.exit
 		@@skaitymasVeikia:
-		cmp ax, 0
-		jne @@read
-		mov bx, word ptr[filePtr]
-		mov ah, 03Eh
-		int 21h
-		mov ah, 09h
-		lea dx, reachedEOF
-		int 21h
-		.exit
-		@@read:
-		mov bx, dx
-		mov al, byte ptr[bx]
+		cmp ax, 0000h
+		jne @@gotSomething
+		mov byte ptr[reachedEOF], 01h
+		@@gotSomething:
+		mov al, byte ptr[byteAndExtraByte]
+		mov byte ptr[si], al
 		mov bh, 00h
 		mov bl, byte ptr[operationByteCount]
 		inc byte ptr[operationByteCount]
 		mov byte ptr[operationBytes+bx], al
 		
+		mov al, byte ptr [byteAndExtraByte+1]
+		mov byte ptr[byteAndExtraByte], al
+		mov byte ptr[byteAndExtraByte+1], 00h
 		
 		pop cx
 		pop bx
@@ -467,7 +539,7 @@ locals @@
 		push dx
 		push si
 		
-		lea dx, unoByte
+		lea si, unoByte
 		call readByteProc
 		mov al, byte ptr[unoByte]
 		lea si, OPKByteBinary
@@ -483,7 +555,7 @@ locals @@
 		push dx
 		push si
 		
-		lea dx, dosByte
+		lea si, dosByte
 		call readByteProc
 		mov al, byte ptr[dosByte]
 		lea si, addressByteBinary
@@ -496,11 +568,24 @@ locals @@
 	endp
 	
 	printUnknown proc
-		pop ax
-		
 		printStr op_unknown
 		mov al, byte ptr[unoByte]
 		call printHex
+		
+		pop ax
+		ret
+	endp
+	printUnknownReuseDos proc
+		printStr op_unknown
+		mov al, byte ptr[unoByte]
+		call printHex
+		
+		mov al, byte ptr[dosByte]
+		mov byte ptr[reuseByte+1], al
+		mov byte ptr[reuseByte], 01h
+		dec byte ptr[operationByteCount]
+		
+		pop ax
 		ret
 	endp
 	
@@ -646,26 +731,17 @@ locals @@
 		@@notSCAS:
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^STRMANIP
 		
-		cmp byte ptr[unoByte], 07Fh
-		ja @@near80toFF
-		jmp @@00to7F
-		@@near80toFF:
-		lea di, @@FAR80toFF
-		jmp di
+		cmp byte ptr[unoByte], 080h
+		jb @@00to7F
+		jmp @@FAR80toFF
 		@@00to7F:
-			cmp byte ptr[unoByte], 03Fh
-			ja @@near40to7F
-			jmp @@00to3F
-			@@near40to7F:
-			lea di, @@FAR40to7F
-			jmp di
+			cmp byte ptr[unoByte], 040h
+			jb @@00to3F
+			jmp @@FAR40to7F
 			@@00to3F:
-				cmp byte ptr[unoByte], 01Fh
-				ja @@near20to3F
-				jmp @@00to1F
-				@@near20to3F:
-				lea di, @@FAR20to3F
-				jmp di
+				cmp byte ptr[unoByte], 020h
+				jb @@00to1F
+				jmp @@FAR20to3F
 				@@00to1F:
 					cmp byte ptr[unoByte], 00h
 					jb @@notADDtype1
@@ -881,12 +957,9 @@ locals @@
 					call printUnknown
 					
 			@@FAR40to7F:
-				cmp byte ptr[unoByte], 05Fh
-				ja @@near60to7F
-				jmp @@40to5F
-				@@near60to7F:
-				lea di, @@FAR60to7F
-				jmp di
+				cmp byte ptr[unoByte], 060h
+				jb @@40to5F
+				jmp @@FAR60to7F
 				@@40to5F:
 					
 					cmp byte ptr[unoByte], 040h
@@ -952,21 +1025,14 @@ locals @@
 					call printUnknown
 		
 		@@FAR80toFF:
-			cmp byte ptr[unoByte], 0BFh
-			ja @@nearC0toFF
-			jmp @@80toBF
-			@@nearC0toFF:
-			lea di, @@FARC0toFF
-			jmp di
+			cmp byte ptr[unoByte], 0C0h
+			jb @@80toBF
+			jmp @@FARC0toFF
 			@@80toBF:
-				cmp byte ptr[unoByte], 09Fh
-				ja @@nearA0toBF
-				jmp @@80to9F
-				@@nearA0toBF:
-				lea di, @@FAR80to9F
-				jmp di
+				cmp byte ptr[unoByte], 0A0h
+				jb @@80to9F
+				jmp @@FARA0toBF
 				@@80to9F:
-					
 					cmp byte ptr[unoByte], 080h
 					jb @@not80to83
 					cmp byte ptr[unoByte], 083h
@@ -1115,7 +1181,7 @@ locals @@
 					
 					call printUnknown
 					
-				@@FAR80to9F:
+				@@FARA0toBF:
 					
 					cmp byte ptr[unoByte], 0A0h
 					jb @@notMOVtype4or5
@@ -1146,12 +1212,9 @@ locals @@
 					call printUnknown
 				
 			@@FARC0toFF:
-				cmp byte ptr[unoByte], 0DFh
-				ja @@nearE0toFF
-				jmp @@C0toDF
-				@@nearE0toFF:
-				lea di, @@FARE0toFF
-				jmp di
+				cmp byte ptr[unoByte], 0E0h
+				jb @@C0toDF
+				jmp @@FARE0toFF
 				@@C0toDF:
 				
 					cmp byte ptr[unoByte], 0C2h
@@ -1266,7 +1329,13 @@ locals @@
 					jne @@notXLAT
 					printStr op_XLAT
 					ret
-					@@notXLAT:				;D8, D9, DA, DB, DC, DD, DE, DF ~ FPU su pletiniais	
+					@@notXLAT:				;D8, D9, DA, DB, DC, DD, DE, DF ~ FPU su pletiniais
+					
+					cmp byte ptr[unoByte], 0D9h
+					jne @@notTransFPU
+					call decipherD9
+					ret
+					@@notTransFPU:
 					
 					call printUnknown
 					
@@ -1549,16 +1618,7 @@ locals @@
 				mov byte ptr[WordOrBytePtr], 01h
 				jmp @@fin
 				@@OPKextra111:
-				printStr op_unknown		;111
-				push ax
-				mov al, byte ptr[unoByte]
-				call printHex
-				mov al, byte ptr[dosByte]
-				mov byte ptr[reuseByte+1], al
-				pop ax
-				mov byte ptr[reuseByte], 01h
-				dec byte ptr[operationByteCount]
-				ret
+				call printUnknownReuseDos	;111
 		@@fin:
 		call printRM
 		ret
@@ -1581,16 +1641,7 @@ locals @@
 				printImmediate 'w'
 				ret
 				@@OPKextra001:
-				printStr op_unknown		;001
-				push ax
-				mov al, byte ptr[unoByte]
-				call printHex
-				mov al, byte ptr[dosByte]
-				mov byte ptr[reuseByte+1], al
-				pop ax
-				mov byte ptr[reuseByte], 01h
-				dec byte ptr[operationByteCount]
-				ret
+				call printUnknownReuseDos	;001
 			@@OPKextra01x:
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra011
@@ -1655,16 +1706,7 @@ locals @@
 			@@OPKextra11x:
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra111
-				printStr op_unknown		;110
-				push ax
-				mov al, byte ptr[unoByte]
-				call printHex
-				mov al, byte ptr[dosByte]
-				mov byte ptr[reuseByte+1], al
-				pop ax
-				mov byte ptr[reuseByte], 01h
-				dec byte ptr[operationByteCount]
-				ret
+				call printUnknownReuseDos	;110
 				@@OPKextra111:
 				printStr op_SAR		;111
 		@@fin:
@@ -1674,7 +1716,7 @@ locals @@
 	decipher80to83 proc
 		cmp byte ptr[unoByte], 082h
 		jne @@exists
-		
+		call printUnknown
 		@@exists:
 		
 		call readByteMakeBinaryDos
@@ -1728,12 +1770,9 @@ locals @@
 		ret
 	endp
 	decipher70to7F proc
-		cmp byte ptr[unoByte], 077h
-		ja @@near78to7F
-		jmp @@70to77
-		@@near78to7F:
-		lea di, @@FAR78to7F
-		jmp di
+		cmp byte ptr[unoByte], 078h
+		jb @@70to77
+		jmp @@FAR78to7F
 		@@70to77:
 			cmp byte ptr[unoByte], 073h
 			ja @@74to77
@@ -1822,18 +1861,298 @@ locals @@
 		call calcJMP
 		ret
 	endp
-	
+	decipherD9 proc
+		call readByteMakeBinaryDos
+		
+		cmp word ptr[addressByteBinary], 0101h
+		je @@notExpandedOPK
+		call decipherD9xxFPUExpansion
+		ret
+		@@notExpandedOPK:		;C0toFF
+		cmp byte ptr[dosByte], 0E0h
+		jb @@C0toDF
+		jmp @@FARE0toFF
+		@@C0toDF:
+			cmp byte ptr[dosByte], 0D0h
+			jb @@C0toCF
+			jmp @@FARD0toDF
+			@@C0toCF:
+				cmp byte ptr[dosByte], 0C0h
+				jb @@notFLDmod11
+				cmp byte ptr[dosByte], 0C7h
+				ja @@notFLDmod11
+				printStr op_FLD
+				printStr FPU_ST
+				printChar '('
+				push ax
+				mov al, byte ptr[unoByte]
+				sub al, 090h
+				printChar al
+				printChar ')'
+				pop ax
+				ret
+				@@notFLDmod11:
+				
+				printStr op_FXCH
+				printStr FPU_ST
+				printChar '('
+				push ax
+				mov al, byte ptr[unoByte]
+				sub al, 098h
+				printChar al
+				printChar ')'
+				pop ax
+				ret
+			@@FARD0toDF:
+				
+				cmp byte ptr[dosByte], 0D0h
+				jne @@notFNOP
+				printStr op_FNOP
+				ret
+				@@notFNOP:
+				
+				call printUnknownReuseDos
+		@@FARE0toFF:
+			cmp byte ptr[dosByte], 0F0h
+			jb @@E0toEF
+			jmp @@FARF0toFF
+			@@E0toEF:
+				
+				cmp byte ptr[dosByte], 0E0h
+				jne @@notFCHS
+				printStr op_FCHS
+				ret
+				@@notFCHS:
+				
+				cmp byte ptr[dosByte], 0E1h
+				jne @@notFABS
+				printStr op_FABS
+				ret
+				@@notFABS:
+				
+				cmp byte ptr[dosByte], 0E4h
+				jne @@notFTST
+				printStr op_FTST
+				ret
+				@@notFTST:
+				
+				cmp byte ptr[dosByte], 0E5h
+				jne @@notFXAM
+				printStr op_FXAM
+				ret
+				@@notFXAM:
+				
+				cmp byte ptr[dosByte], 0E8h	;FPU transcendentine
+				jne @@notFLD1
+				printStr op_FLD1
+				ret
+				@@notFLD1:
+				
+				cmp byte ptr[dosByte], 0E9h	;FPU transcendentine
+				jne @@notFLDL2T
+				printStr op_FLDL2T
+				ret
+				@@notFLDL2T:
+				
+				cmp byte ptr[dosByte], 0EAh	;FPU transcendentine
+				jne @@notFLDL2E
+				printStr op_FLDL2E
+				ret
+				@@notFLDL2E:
+				
+				cmp byte ptr[dosByte], 0EBh	;FPU transcendentine
+				jne @@notFLDPI
+				printStr op_FLDPI
+				ret
+				@@notFLDPI:
+				
+				cmp byte ptr[dosByte], 0ECh	;FPU transcendentine
+				jne @@notFLDLG2
+				printStr op_FLDLG2
+				ret
+				@@notFLDLG2:
+				
+				cmp byte ptr[dosByte], 0EDh
+				jne @@notFLDLN2
+				printStr op_FLDLN2
+				ret
+				@@notFLDLN2:
+				
+				cmp byte ptr[dosByte], 0EEh	;FPU transcendentine
+				jne @@notFLDZ
+				printStr op_FLDZ
+				ret
+				@@notFLDZ:
+				
+				call printUnknownReuseDos
+			@@FARF0toFF:
+				
+				cmp byte ptr[dosByte], 0F0h	;FPU transcendentine
+				jne @@notF2XM1
+				printStr op_F2XM1
+				ret
+				@@notF2XM1:
+				
+				cmp byte ptr[dosByte], 0F1h	;FPU transcendentine
+				jne @@notFYL2X
+				printStr op_FYL2X
+				ret
+				@@notFYL2X:
+				
+				cmp byte ptr[dosByte], 0F2h	;FPU transcendentine
+				jne @@notFPTAN
+				printStr op_FPTAN
+				ret
+				@@notFPTAN:
+				
+				cmp byte ptr[dosByte], 0F3h	;FPU transcendentine
+				jne @@notFPATAN
+				printStr op_FPATAN
+				ret
+				@@notFPATAN:
+				
+				cmp byte ptr[dosByte], 0F4h
+				jne @@notFXTRAC
+				printStr op_FXTRAC
+				ret
+				@@notFXTRAC:
+				
+				cmp byte ptr[dosByte], 0F5h
+				jne @@notFPREM1
+				printStr op_FPREM1
+				ret
+				@@notFPREM1:
+				
+				cmp byte ptr[dosByte], 0F6h
+				jne @@notFDECST
+				printStr op_FDECST
+				ret
+				@@notFDECST:
+				
+				cmp byte ptr[dosByte], 0F7h
+				jne @@notFINCST
+				printStr op_FINCST
+				ret
+				@@notFINCST:
+				
+				cmp byte ptr[dosByte], 0F8h
+				jne @@notFPREM
+				printStr op_FPREM
+				ret
+				@@notFPREM:
+				
+				cmp byte ptr[dosByte], 0F9h	;FPU transcendentine
+				jne @@notFYL2XP1
+				printStr op_FYL2XP1
+				ret
+				@@notFYL2XP1:
+				
+				cmp byte ptr[dosByte], 0FAh
+				jne @@notFSQRT
+				printStr op_FSQRT
+				ret
+				@@notFSQRT:
+				
+				cmp byte ptr[dosByte], 0FBh
+				jne @@notFSINCO
+				printStr op_FSINCO
+				ret
+				@@notFSINCO:
+				
+				cmp byte ptr[dosByte], 0FCh
+				jne @@notFRNDIN
+				printStr op_FRNDIN
+				ret
+				@@notFRNDIN:
+				
+				cmp byte ptr[dosByte], 0FDh
+				jne @@notFSCALE
+				printStr op_FSCALE
+				ret
+				@@notFSCALE:
+				
+				cmp byte ptr[dosByte], 0FEh
+				jne @@notFSIN
+				printStr op_FSIN
+				ret
+				@@notFSIN:
+				
+				printStr op_FCOS
+				ret
+	endp
+	decipherD9xxFPUExpansion proc
+		cmp byte ptr[addressByteBinary+2], 01h
+		je @@OPKextra1xx
+			cmp byte ptr[addressByteBinary+3], 01h
+			je @@OPKextra01x
+				cmp byte ptr[addressByteBinary+4], 01h
+				je @@OPKextra001
+				printStr op_FLD		;000
+				mov byte ptr[WordOrBytePtr], '.'
+				jmp @@fin
+				@@OPKextra001:
+				call printUnknownReuseDos	;001
+			@@OPKextra01x:
+				cmp byte ptr[addressByteBinary+4], 01h
+				je @@OPKextra011
+				printStr op_FST		;010
+				mov byte ptr[WordOrBytePtr], '.'
+				jmp @@fin
+				@@OPKextra011:
+				printStr op_FSTP	;011
+				mov byte ptr[WordOrBytePtr], '.'
+				jmp @@fin
+		@@OPKextra1xx:
+			cmp byte ptr[addressByteBinary+3], 01h
+			je @@OPKextra11x
+				cmp byte ptr[addressByteBinary+4], 01h
+				je @@OPKextra101
+				printStr op_FLDENV	;100
+				mov byte ptr[WordOrBytePtr], 00h
+				jmp @@fin
+				@@OPKextra101:
+				printStr op_FLDCW	;101
+				mov byte ptr[WordOrBytePtr], 'W'
+				jmp @@fin
+			@@OPKextra11x:
+				cmp byte ptr[addressByteBinary+4], 01h
+				je @@OPKextra111
+				printStr op_FSTENV	;110
+				mov byte ptr[WordOrBytePtr], 00h
+				jmp @@fin
+				@@OPKextra111:
+				printStr op_FSTCW	;111
+				mov byte ptr[WordOrBytePtr], 'W'
+		@@fin:
+		call printRM
+		ret
+	endp
 	
 	calcJMP proc
 		printChar 09h
 		push ax
+		push bx
+		push cx
 		readByte dosByte
-		mov al, byte ptr[currentIP+1]
+		mov bh, 00h
+		mov bl, byte ptr[operationByteCount]
+		mov cl, byte ptr[dosByte]
+		cmp cl, 07Fh
+		ja @@signed
+		mov ch, 00h
+		jmp @@fin
+		@@signed:
+		mov ch, 0FFh
+		@@fin:
+		mov ax, word ptr[currentIP]
+		add ax, bx
+		add ax, cx
+		xchg ah, al
 		call printHex
-		mov al, byte ptr[currentIP]
-		add al, byte ptr[operationByteCount]
-		add al, byte ptr[dosByte]
+		xchg ah, al
 		call printHex
+		pop cx
+		pop bx
 		pop ax
 		ret
 	endp
@@ -1853,17 +2172,17 @@ locals @@
 		
 		cmp byte ptr[OPKByteBinary+6], 00h
 		je @@toRM
-			cmp word ptr[addressByteBinary+3], 00000h
+			cmp word ptr[addressByteBinary+3], 0000h
 			jne @@notToES
 			printStr segRegES
 			jmp @@printedToReg
 			@@notToES:
-			cmp word ptr[addressByteBinary+3], 00001h
+			cmp word ptr[addressByteBinary+3], 0001h
 			jne @@notToCS
 			printStr segRegCS
 			jmp @@printedToReg
 			@@notToCS:
-			cmp word ptr[addressByteBinary+3], 00100h
+			cmp word ptr[addressByteBinary+3], 0100h
 			jne @@notToSS
 			printStr segRegSS
 			jmp @@printedToReg
@@ -1877,17 +2196,17 @@ locals @@
 		@@toRM:
 			call printRM
 			printChar ','
-			cmp word ptr[addressByteBinary+3], 00000h
+			cmp word ptr[addressByteBinary+3], 0000h
 			jne @@notES
 			printStr segRegES
 			ret
 			@@notES:
-			cmp word ptr[addressByteBinary+3], 00001h
+			cmp word ptr[addressByteBinary+3], 0001h
 			jne @@notCS
 			printStr segRegCS
 			ret
 			@@notCS:
-			cmp word ptr[addressByteBinary+3], 00100h
+			cmp word ptr[addressByteBinary+3], 0100h
 			jne @@notSS
 			printStr segRegSS
 			ret
@@ -2077,8 +2396,13 @@ locals @@
 			jmp @@printed
 		@@notBOverride:
 		cmp byte ptr[WordOrBytePtr], 'W'
-		jne @@printed
+		jne @@notWOverride
 			printStr eaWordPtr
+			jmp @@printed
+		@@notWOverride:
+		cmp byte ptr[WordOrBytePtr], '.'
+		jne @@printed
+			printStr eaFloatPtr
 		@@printed:
 		
 		cmp byte ptr[redirectByte], 01h
@@ -2476,6 +2800,12 @@ main:
 	mov cl, byte ptr[operationByteCount]
 	add word ptr[currentIP], cx
 	
+	mov bh, 00h
+	mov bl, byte ptr[printHowMany]
+	mov byte ptr[printThis+bx+1], '$'
+	printStrNoWrite printThis
+	printCharNoWrite 0Ah
+	
 	printChar 0Ah
 	
 	lea dx, printThis
@@ -2487,11 +2817,16 @@ main:
 	printStr errorWritingToOutputFile
 	.exit
 	@@writeSuccess:
+	cmp byte ptr[reachedEOF], 01h
+	je finished
 	jmp byteByByte
+	
+	finished:
 	
 	mov bx, word ptr[filePtr]
 	mov ah, 03Eh
 	int 21h
+	printStrNoWrite strReachedEOF
 	
 	mov ax, 04C00h
 	int 21h
