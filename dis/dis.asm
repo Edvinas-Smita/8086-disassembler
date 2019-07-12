@@ -16,7 +16,9 @@
 	;								fileVars
 	outFilePtr dw ?
 	filePtr dw ?
-	currentIP dw 00FFh
+	currentIP dw 0100h
+	operationByteCount db 00
+	operationBytes db 10 dup(?)
 	;								fileVars
 	
 	;								fileReading
@@ -26,9 +28,13 @@
 	cuatroByte db ?
 	cincoByte db ?
 	
-	printThis db ?
+	printHowMany db 080h
+	printHowManyCopy db ?
+	printThis db 080h dup(?)
+	printThisCopy db 080h dup(?)
+	
 	reuseByte db 00, ?			;+0 ~ ar pernaudot, +1 ~ ka pernaudot
-	redirectByte db 00, ?	;+0 ~ ar buvo nukreipta i kita seg., +1 ~ koks nukreipimas ('E', 'C', 'S', 'D')
+	redirectByte db 00, ?		;+0 ~ ar buvo nukreipta i kita seg., +1 ~ koks nukreipimas ('E', 'C', 'S', 'D')
 	;								fileReading
 	
 	;								komandos
@@ -124,7 +130,7 @@
 	op_STI		db '	STI$'
 	op_HLT		db '	HLT$'
 	op_WAIT		db '	WAIT$'
-	op_ESC		db '	ESC$'		;neegzituoja.....
+	op_ESC		db '	ESC$'		;neegzituoja????
 	op_LOCK		db '	LOCK$'
 	
 	op_UNUSED	db ' (unused)$'
@@ -248,6 +254,7 @@ locals @@
 		push bx
 		push cx
 		push di
+		push si
 		
 		mov ah, 09h
 		int 21h
@@ -258,16 +265,25 @@ locals @@
 		repne scasb
 		mov cx, di
 		sub cx, dx
-		
 		dec cx		;kiek tame stringe charu neskaitant $
-		mov bx, word ptr[outFilePtr]
-		mov ah, 040h
-		int 21h
-		jnc @@writeSuccess
-		printStr errorWritingToOutputFile
-		.exit
-		@@writeSuccess:
 		
+	;	mov bx, word ptr[outFilePtr]
+	;	mov ah, 040h
+	;	int 21h
+	;	jnc @@writeSuccess
+	;	printStr errorWritingToOutputFile
+	;	.exit
+	;	@@writeSuccess:
+		
+		mov bh, 00
+		mov bl, byte ptr[printHowMany]
+		add byte ptr[printHowMany], cl
+		lea di, printThis
+		add di, bx
+		mov si, dx
+		rep movsb
+		
+		pop si
 		pop di
 		pop cx
 		pop bx
@@ -293,16 +309,21 @@ locals @@
 		mov ah, 02h
 		int 21h
 		
-		mov byte ptr[printThis], dl
-		mov bx, word ptr[outFilePtr]
-		mov cx, 0001h
-		lea dx, printThis
-		mov ah, 040h
-		int 21h
-		jnc @@writeSuccess
-		printStr errorWritingToOutputFile
-		.exit
-		@@writeSuccess:
+	;	mov byte ptr[printThis], dl
+	;	mov bx, word ptr[outFilePtr]
+	;	mov cx, 0001h
+	;	lea dx, printThis
+	;	mov ah, 040h
+	;	int 21h
+	;	jnc @@writeSuccess
+	;	printStr errorWritingToOutputFile
+	;	.exit
+	;	@@writeSuccess:
+		
+		mov bh, 00h
+		mov bl, byte ptr[printHowMany]
+		inc byte ptr[printHowMany]
+		mov byte ptr[printThis+bx], dl
 		
 		pop dx
 		pop cx
@@ -407,7 +428,13 @@ locals @@
 		int 21h
 		.exit
 		@@read:
-		inc word ptr[currentIP]
+		mov bx, dx
+		mov al, byte ptr[bx]
+		mov bh, 00h
+		mov bl, byte ptr[operationByteCount]
+		inc byte ptr[operationByteCount]
+		mov byte ptr[operationBytes+bx], al
+		
 		
 		pop cx
 		pop bx
@@ -468,71 +495,63 @@ locals @@
 		ret
 	endp
 	
-;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	printUnknown proc
+		pop ax
+		
+		printStr op_unknown
+		mov al, byte ptr[unoByte]
+		call printHex
+		ret
+	endp
+	
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	decipher proc
 		push ax
 		push si
 		
 		cmp byte ptr[reuseByte], 01h
-		je @@dontReadByte
+		je @@reuse
 		call readByteMakeBinaryUno
 		jmp @@readByte
-		@@dontReadByte:
+		@@reuse:
 		mov byte ptr[reuseByte], 00h
+		inc byte ptr[operationByteCount]
 		mov al, byte ptr[reuseByte+1]
 		mov byte ptr[unoByte], al
+		mov byte ptr[operationBytes], al
 		lea si, OPKByteBinary
 		call makeBinary
 		@@readByte:
 		
-		@@hangingRedirect:
-		
+		mov al, 07h
+		call printHex
+		mov al, 034h
+		call printHex
 		printChar ':'
 		mov al, byte ptr[currentIP+1]
 		call printHex
 		mov al, byte ptr[currentIP]
 		call printHex
-		
-		cmp byte ptr[redirectByte], 01h
-		jne @@notHangingRedirect
-		mov byte ptr[redirectByte], 00h
-		cmp byte ptr[redirectByte+1], 'E'
-		jne @@notHangingES
-		printStr segESUnused
-		jmp @@hangingRedirect
-		@@notHangingES:
-		cmp byte ptr[redirectByte+1], 'C'
-		jne @@notHangingCS
-		printStr segCSUnused
-		jmp @@hangingRedirect
-		@@notHangingCS:
-		cmp byte ptr[redirectByte+1], 'S'
-		jne @@notHangingSS
-		printStr segSSUnused
-		jmp @@hangingRedirect
-		@@notHangingSS:
-		printStr segDSUnused
-		jmp @@hangingRedirect
-		@@notHangingRedirect:
+		printChar ' '
 		
 		cmp byte ptr[unoByte], 026h
 		jne @@notRedirectToES
-		mov byte ptr[redirectByte+1], 'E'
+		mov byte ptr[redirectByte+1], 026h
 		jmp @@redirection
 		@@notRedirectToES:
 		cmp byte ptr[unoByte], 02Eh
 		jne @@notRedirectToCS
-		mov byte ptr[redirectByte+1], 'C'
+		mov byte ptr[redirectByte+1], 02Eh
 		jmp @@redirection
 		@@notRedirectToCS:
 		cmp byte ptr[unoByte], 036h
 		jne @@notRedirectToSS
-		mov byte ptr[redirectByte+1], 'S'
+		mov byte ptr[redirectByte+1], 026h
 		jmp @@redirection
 		@@notRedirectToSS:
 		cmp byte ptr[unoByte], 03Eh
 		jne @@notRedirection
-		mov byte ptr[redirectByte+1], 'D'
+		mov byte ptr[redirectByte+1], 03Eh
 		jmp @@redirection
 		
 		jmp @@notRedirection
@@ -543,596 +562,8 @@ locals @@
 		
 		pop si
 		pop ax
+;============================================================================================================================================================================================================
 		
-		cmp byte ptr[unoByte], 0FEh
-		jb @@notFForFE
-		call decipherFForFE
-		ret
-		@@notFForFE:
-		
-		cmp byte ptr[unoByte], 0F6h
-		jb @@notF6toF7
-		cmp byte ptr[unoByte], 0F7h
-		ja @@notF6toF7
-		call decipherF6toF7
-		ret
-		@@notF6toF7:
-		
-		cmp byte ptr[unoByte], 0D0h
-		jb @@notD0toD3
-		cmp byte ptr[unoByte], 0D3h
-		ja @@notD0toD3
-		call decipherD0toD3
-		ret
-		@@notD0toD3:
-		
-		cmp byte ptr[unoByte], 080h
-		jb @@not80to83
-		cmp byte ptr[unoByte], 083h
-		ja @@not80to83
-		call decipher80to83
-		ret
-		@@not80to83:
-		
-		cmp byte ptr[unoByte], 070h
-		jb @@not70to7F
-		cmp byte ptr[unoByte], 07Fh
-		ja @@not70to7F
-		call decipher70to7F
-		ret
-		@@not70to7F:
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvMOV
-		cmp byte ptr[unoByte], 088h
-		jb @@notMOVtype1
-		cmp byte ptr[unoByte], 08Bh
-		ja @@notMOVtype1
-		printStr op_MOV
-		call addressDW
-		ret
-		@@notMOVtype1:
-		
-		cmp byte ptr[unoByte], 0C6h
-		jb @@notMOVtype2
-		cmp byte ptr[unoByte], 0C7h
-		ja @@notMOVtype2
-		printStr op_MOV
-		call readByteMakeBinaryDos
-		mov byte ptr[WordOrBytePtr], 01h
-		call printRM
-		printChar ','
-		printChar ' '
-		printImmediate 'w'
-		ret
-		@@notMOVtype2:
-		
-		cmp byte ptr[unoByte], 0B0h
-		jb @@notMOVtype3
-		cmp byte ptr[unoByte], 0BFh
-		ja @@notMOVtype3
-		printStr op_MOV
-		call OPKByteWREG
-		ret
-		@@notMOVtype3:
-		
-		cmp byte ptr[unoByte], 0A0h
-		jb @@notMOVtype4or5
-		cmp byte ptr[unoByte], 0A3h
-		ja @@notMOVtype4or5
-		call specialMOV
-		ret
-		@@notMOVtype4or5:
-		
-		cmp byte ptr[unoByte], 08Eh
-		je @@MOVtype6or7
-		cmp byte ptr[unoByte], 08Ch
-		je @@MOVtype6or7
-		jmp @@notMOVtype6or7
-		@@MOVtype6or7:
-		printStr op_MOV
-		call segmentMOV
-		ret
-		@@notMOVtype6or7:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^MOV
-
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvPUSH
-		cmp byte ptr[unoByte], 050h
-		jb @@notPUSHtype2
-		cmp byte ptr[unoByte], 057h
-		ja @@notPUSHtype2
-		printStr op_PUSH
-		push bx
-		mov bx, -0005h
-		call printReg
-		pop bx
-		ret
-		@@notPUSHtype2:
-		
-		cmp word ptr[OPKByteBinary+5], 0101h
-		jne @@notPUSHtype3orPOPype3
-		cmp byte ptr[unoByte], 06h
-		jb @@notPUSHtype3orPOPype3
-		cmp byte ptr[unoByte], 01Fh
-		ja @@notPUSHtype3orPOPype3
-		cmp byte ptr[unoByte], 0Fh
-		je @@notPUSHtype3orPOPype3
-		shr byte ptr[unoByte], 1
-		jc @@POPtype3
-		printStr op_PUSH
-		jmp @@nowPrintSegReg
-		@@POPtype3:
-		printStr op_POP
-		@@nowPrintSegReg:
-		push cx
-		mov cx, 000Ch
-		and cl, byte ptr[unoByte]
-		cmp cl, 0
-		jne @@notES
-		printStr segRegES
-		jmp @@doneWithThis
-		@@notES:
-		cmp cl, 04h
-		jne @@notCS
-		printStr segRegCS
-		jmp @@doneWithThis
-		@@notCS:
-		cmp cl, 08h
-		jne @@notSS
-		printStr segRegSS
-		jmp @@doneWithThis
-		@@notSS:
-		printStr segRegDS
-		@@doneWithThis:
-		pop cx
-		ret
-		@@notPUSHtype3orPOPype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^PUSH
-
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvPOP
-		cmp byte ptr[unoByte], 8Fh
-		jne @@notPOPtype1
-		printStr op_POP
-		call readByteMakeBinaryDos
-		mov byte ptr[WordOrBytePtr], 00h
-		call printRM
-		ret
-		@@notPOPtype1:
-		
-		cmp byte ptr[unoByte], 058h
-		jb @@notPOPtype2
-		cmp byte ptr[unoByte], 05Fh
-		ja @@notPOPtype2
-		printStr op_POP
-		push bx
-		mov bx, -0005h
-		call printRegWord
-		pop bx
-		ret
-		@@notPOPtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^POP
-
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvXCHG
-		cmp byte ptr[unoByte], 086h
-		jb @@notXCHGtype1
-		cmp byte ptr[unoByte], 087h
-		ja @@notXCHGtype1
-		printStr op_XCHG
-		mov bx, 0000h
-		call printReg
-		printChar ','
-		call readByteMakeBinaryDos
-		mov byte ptr[WordOrBytePtr], 01h
-		call printRM
-		ret
-		@@notXCHGtype1:
-		
-		cmp byte ptr[unoByte], 090h
-		jb @@notXCHGtype2
-		cmp byte ptr[unoByte], 097h
-		ja @@notXCHGtype2
-		printStr op_XCHG
-		printStr regAX
-		printChar ','
-		push bx
-		mov bx, -0005h
-		call printRegWord
-		pop bx
-		ret
-		@@notXCHGtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^XCHG
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvIN
-		cmp byte ptr[unoByte], 0E4h
-		jb @@notINtype1
-		cmp byte ptr[unoByte], 0E5h
-		ja @@notINtype1
-		printStr op_IN
-		cmp byte ptr[unoByte], 0E4h
-		je @@INAL1
-		printStr regAX
-		jmp @@doneINtype1
-		@@INAL1:
-		printStr regAL
-		@@doneINtype1:
-		printChar ','
-		printChar ' '
-		printImmediate '1'
-		ret
-		@@notINtype1:
-		
-		cmp byte ptr[unoByte], 0ECh
-		jb @@notINtype2
-		cmp byte ptr[unoByte], 0EDh
-		ja @@notINtype2
-		printStr op_IN
-		cmp byte ptr[unoByte], 0ECh
-		je @@INAL2
-		printStr regAX
-		jmp @@doneINtype2
-		@@INAL2:
-		printStr regAL
-		@@doneINtype2:
-		printChar ','
-		printStr regDX
-		ret
-		@@notINtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^IN
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvOUT
-		cmp byte ptr[unoByte], 0E6h
-		jb @@notOUTtype1
-		cmp byte ptr[unoByte], 0E7h
-		ja @@notOUTtype1
-		printStr op_OUT
-		printChar ' '
-		printImmediate '1'
-		printChar ','
-		cmp byte ptr[unoByte], 0E6h
-		je @@OUTAL1
-		printStr regAX
-		ret
-		@@OUTAL1:
-		printStr regAL
-		ret
-		@@notOUTtype1:
-		
-		cmp byte ptr[unoByte], 0EEh
-		jb @@notOUTtype2
-		cmp byte ptr[unoByte], 0EFh
-		ja @@notOUTtype2
-		printStr op_OUT
-		printStr regDX
-		printChar ','
-		cmp byte ptr[unoByte], 0EEh
-		je @@OUTAL2
-		printStr regAX
-		jmp @@doneOUTtype2
-		@@OUTAL2:
-		printStr regAL
-		@@doneOUTtype2:
-		ret
-		@@notOUTtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^OUT
-		
-		cmp byte ptr[unoByte], 0D7h
-		jne @@notXLAT
-		printStr op_XLAT
-		ret
-		@@notXLAT:
-		
-		cmp byte ptr[unoByte], 08Dh
-		jne @@notLEA
-		printStr op_LEA
-		call address
-		ret
-		@@notLEA:
-		
-		cmp byte ptr[unoByte], 0C5h
-		jne @@notLDS
-		printStr op_LDS
-		call address
-		ret
-		@@notLDS:
-		
-		cmp byte ptr[unoByte], 0C4h
-		jne @@notLES
-		printStr op_LES
-		call address
-		ret
-		@@notLES:
-		
-		cmp byte ptr[unoByte], 09Fh
-		jne @@notLAHF
-		printStr op_LAHF
-		ret
-		@@notLAHF:
-		
-		cmp byte ptr[unoByte], 09Eh
-		jne @@notSAHF
-		printStr op_SAHF
-		ret
-		@@notSAHF:
-		
-		cmp byte ptr[unoByte], 09Ch
-		jne @@notPUSHF
-		printStr op_PUSHF
-		ret
-		@@notPUSHF:
-		
-		cmp byte ptr[unoByte], 09Dh
-		jne @@notPOPF
-		printStr op_POPF
-		ret
-		@@notPOPF:
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvADD
-		cmp byte ptr[unoByte], 00h
-		jb @@notADDtype1
-		cmp byte ptr[unoByte], 03h
-		ja @@notADDtype1
-		printStr op_ADD
-		call addressDW
-		ret
-		@@notADDtype1:
-		
-		cmp byte ptr[unoByte], 04h
-		jb @@notADDtype3
-		cmp byte ptr[unoByte], 05h
-		ja @@notADDtype3
-		printStr op_ADD
-		call immToAccu
-		ret
-		@@notADDtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ADD
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvADC
-		cmp byte ptr[unoByte], 010h
-		jb @@notADCtype1
-		cmp byte ptr[unoByte], 013h
-		ja @@notADCtype1
-		printStr op_ADC
-		call addressDW
-		ret
-		@@notADCtype1:
-		
-		cmp byte ptr[unoByte], 014h
-		jb @@notADCtype3
-		cmp byte ptr[unoByte], 015h
-		ja @@notADCtype3
-		printStr op_ADC
-		call immToAccu
-		ret
-		@@notADCtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ADC
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvINC
-		cmp byte ptr[unoByte], 040h
-		jb @@notINCtype2
-		cmp byte ptr[unoByte], 047h
-		ja @@notINCtype2
-		printStr op_INC
-		push bx
-		mov bx, -0005h
-		call printRegWord
-		pop bx
-		ret
-		@@notINCtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^INC
-
-		cmp byte ptr[unoByte], 037h
-		jne @@notAAA
-		printStr op_AAA
-		ret
-		@@notAAA:
-		
-		cmp byte ptr[unoByte], 027h
-		jne @@notBAA
-		printStr op_BAA
-		ret
-		@@notBAA:
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvSUB
-		cmp byte ptr[unoByte], 028h
-		jb @@notSUBtype1
-		cmp byte ptr[unoByte], 02Bh
-		ja @@notSUBtype1
-		printStr op_SUB
-		call addressDW
-		ret
-		@@notSUBtype1:
-		
-		cmp byte ptr[unoByte], 02Ch
-		jb @@notSUBtype3
-		cmp byte ptr[unoByte], 02Dh
-		ja @@notSUBtype3
-		printStr op_SUB
-		call immToAccu
-		ret
-		@@notSUBtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^SUB
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvSSB
-		cmp byte ptr[unoByte], 018h
-		jb @@notSSBtype1
-		cmp byte ptr[unoByte], 01Bh
-		ja @@notSSBtype1
-		printStr op_SSB
-		call addressDW
-		ret
-		@@notSSBtype1:
-		
-		cmp byte ptr[unoByte], 01Ch
-		jb @@notSSBtype3
-		cmp byte ptr[unoByte], 01Dh
-		ja @@notSSBtype3
-		printStr op_SSB
-		call immToAccu
-		ret
-		@@notSSBtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^SSB
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvDEC
-		cmp byte ptr[unoByte], 048h
-		jb @@notDECtype2
-		cmp byte ptr[unoByte], 04Fh
-		ja @@notDECtype2
-		printStr op_DEC
-		push bx
-		mov bx, -0005h
-		call printRegWord
-		pop bx
-		ret
-		@@notDECtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^DEC
-
-		cmp byte ptr[unoByte], 086h
-		jb @@notNEG
-		cmp byte ptr[unoByte], 087h
-		ja @@notNEG
-		printStr op_NEG
-		call readByteMakeBinaryDos
-		mov byte ptr[WordOrBytePtr], 01h
-		call printRM
-		ret
-		@@notNEG:
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvCMP
-		cmp byte ptr[unoByte], 038h
-		jb @@notCMPtype1
-		cmp byte ptr[unoByte], 03Bh
-		ja @@notCMPtype1
-		printStr op_CMP
-		call addressDW
-		ret
-		@@notCMPtype1:
-		
-		cmp byte ptr[unoByte], 03Ch
-		jb @@notCMPtype2
-		cmp byte ptr[unoByte], 03Dh
-		ja @@notCMPtype2
-		printStr op_CMP
-		call immToAccu
-		ret
-		@@notCMPtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^CMP
-		
-		cmp byte ptr[unoByte], 03Fh
-		jne @@notAAS
-		printStr op_AAS
-		ret
-		@@notAAS:
-		
-		cmp byte ptr[unoByte], 02Fh
-		jne @@notDAS
-		printStr op_DAS
-		ret
-		@@notDAS:
-		
-		cmp byte ptr[unoByte], 0D4h		;?????????
-		jne @@notAAM
-		printStr op_AAM
-		printChar ' '
-		printImmediate '1'
-		ret
-		@@notAAM:
-		
-		cmp byte ptr[unoByte], 0D5h		;?????????
-		jne @@notAAD
-		printStr op_AAD
-		printChar ' '
-		printImmediate '1'
-		ret
-		@@notAAD:
-		
-		cmp byte ptr[unoByte], 098h
-		jne @@notCBW
-		printStr op_CBW
-		ret
-		@@notCBW:
-		
-		cmp byte ptr[unoByte], 099h
-		jne @@notCWD
-		printStr op_CWD
-		ret
-		@@notCWD:
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvAND
-		cmp byte ptr[unoByte], 020h
-		jb @@notANDtype1
-		cmp byte ptr[unoByte], 023h
-		ja @@notANDtype1
-		printStr op_AND
-		call addressDW
-		ret
-		@@notANDtype1:
-		
-		cmp byte ptr[unoByte], 024h
-		jb @@notANDtype3
-		cmp byte ptr[unoByte], 025h
-		ja @@notANDtype3
-		printStr op_AND
-		call immToAccu
-		ret
-		@@notANDtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^AND
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvTEST
-		cmp byte ptr[unoByte], 084h
-		jb @@notTESTtype1
-		cmp byte ptr[unoByte], 085h
-		ja @@notTESTtype1
-		printStr op_TEST
-		call addressDW
-		ret
-		@@notTESTtype1:
-
-		cmp byte ptr[unoByte], 0A8h
-		jb @@notTESTtype3
-		cmp byte ptr[unoByte], 0A9h
-		ja @@notTESTtype3
-		printStr op_TEST
-		call immToAccu
-		ret
-		@@notTESTtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^TEST
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvOR
-		cmp byte ptr[unoByte], 08h
-		jb @@notORtype1
-		cmp byte ptr[unoByte], 0Bh
-		ja @@notORtype1
-		printStr op_OR
-		call addressDW
-		ret
-		@@notORtype1:
-
-		cmp byte ptr[unoByte], 0Ch
-		jb @@notORtype3
-		cmp byte ptr[unoByte], 0Dh
-		ja @@notORtype3
-		printStr op_OR
-		call immToAccu
-		ret
-		@@notORtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^OR
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvXOR
-		cmp byte ptr[unoByte], 030h
-		jb @@notXORtype1
-		cmp byte ptr[unoByte], 033h
-		ja @@notXORtype1
-		printStr op_XOR
-		call addressDW
-		ret
-		@@notXORtype1:
-
-		cmp byte ptr[unoByte], 034h
-		jb @@notXORtype3
-		cmp byte ptr[unoByte], 035h
-		ja @@notXORtype3
-		printStr op_XOR
-		call immToAccu
-		ret
-		@@notXORtype3:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^XOR
 		
 ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvSTRMANIP
 		cmp byte ptr[unoByte], 0F2h
@@ -1164,6 +595,7 @@ locals @@
 		mov byte ptr[reuseByte+1], al
 		pop ax
 		mov byte ptr[reuseByte], 01h
+		dec byte ptr[operationByteCount]
 		ret
 		@@notREP:
 		@@repUsed:
@@ -1186,14 +618,14 @@ locals @@
 		ret
 		@@notCMPS:
 		
-		cmp byte ptr[unoByte], 0AEh
-		jb @@notSCAS
-		cmp byte ptr[unoByte], 0AFh
-		ja @@notSCAS
-		printStr op_SCAS
+		cmp byte ptr[unoByte], 0AAh
+		jb @@notSTOS
+		cmp byte ptr[unoByte], 0ABh
+		ja @@notSTOS
+		printStr op_STOS
 		call strManipBOrW
 		ret
-		@@notSCAS:
+		@@notSTOS:
 		
 		cmp byte ptr[unoByte], 0ACh
 		jb @@notLODS
@@ -1204,264 +636,875 @@ locals @@
 		ret
 		@@notLODS:
 		
-		cmp byte ptr[unoByte], 0AAh
-		jb @@notSTOS
-		cmp byte ptr[unoByte], 0ABh
-		ja @@notSTOS
-		printStr op_STOS
+		cmp byte ptr[unoByte], 0AEh
+		jb @@notSCAS
+		cmp byte ptr[unoByte], 0AFh
+		ja @@notSCAS
+		printStr op_SCAS
 		call strManipBOrW
 		ret
-		@@notSTOS:
+		@@notSCAS:
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^STRMANIP
 		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvCALL
-		cmp byte ptr[unoByte], 0E8h
-		jne @@notCALLtype1
-		printStr op_CALL
-		printChar ' '
-		push ax
-		readByte dosByte
-		readByte tresByte
-		mov ax, word ptr[currentIP]
-		add ax, word ptr[dosByte]
-		xchg al, ah
-		call printHex
-		xchg al, ah
-		call printHex
-		pop ax
-		ret
-		@@notCALLtype1:
+		cmp byte ptr[unoByte], 07Fh
+		ja @@near80toFF
+		jmp @@00to7F
+		@@near80toFF:
+		lea di, @@FAR80toFF
+		jmp di
+		@@00to7F:
+			cmp byte ptr[unoByte], 03Fh
+			ja @@near40to7F
+			jmp @@00to3F
+			@@near40to7F:
+			lea di, @@FAR40to7F
+			jmp di
+			@@00to3F:
+				cmp byte ptr[unoByte], 01Fh
+				ja @@near20to3F
+				jmp @@00to1F
+				@@near20to3F:
+				lea di, @@FAR20to3F
+				jmp di
+				@@00to1F:
+					cmp byte ptr[unoByte], 00h
+					jb @@notADDtype1
+					cmp byte ptr[unoByte], 03h
+					ja @@notADDtype1
+					printStr op_ADD
+					call addressDW
+					ret
+					@@notADDtype1:
+					
+					cmp byte ptr[unoByte], 04h
+					jb @@notADDtype3
+					cmp byte ptr[unoByte], 05h
+					ja @@notADDtype3
+					printStr op_ADD
+					call immToAccu
+					ret
+					@@notADDtype3:
+					
+					cmp byte ptr[unoByte], 08h
+					jb @@notORtype1
+					cmp byte ptr[unoByte], 0Bh
+					ja @@notORtype1
+					printStr op_OR
+					call addressDW
+					ret
+					@@notORtype1:
+					
+					cmp byte ptr[unoByte], 0Ch
+					jb @@notORtype3
+					cmp byte ptr[unoByte], 0Dh
+					ja @@notORtype3
+					printStr op_OR
+					call immToAccu
+					ret
+					@@notORtype3:
+					
+					cmp byte ptr[unoByte], 010h
+					jb @@notADCtype1
+					cmp byte ptr[unoByte], 013h
+					ja @@notADCtype1
+					printStr op_ADC
+					call addressDW
+					ret
+					@@notADCtype1:
+					
+					cmp byte ptr[unoByte], 014h
+					jb @@notADCtype3
+					cmp byte ptr[unoByte], 015h
+					ja @@notADCtype3
+					printStr op_ADC
+					call immToAccu
+					ret
+					@@notADCtype3:
+					
+					cmp byte ptr[unoByte], 018h
+					jb @@notSSBtype1
+					cmp byte ptr[unoByte], 01Bh
+					ja @@notSSBtype1
+					printStr op_SSB
+					call addressDW
+					ret
+					@@notSSBtype1:
+					
+					cmp byte ptr[unoByte], 01Ch
+					jb @@notSSBtype3
+					cmp byte ptr[unoByte], 01Dh
+					ja @@notSSBtype3
+					printStr op_SSB
+					call immToAccu
+					ret
+					@@notSSBtype3:
+					
+					cmp word ptr[OPKByteBinary+5], 0101h
+					jne @@notPUSHtype3orPOPype3
+					cmp byte ptr[unoByte], 06h
+					jb @@notPUSHtype3orPOPype3
+					cmp byte ptr[unoByte], 01Fh
+					ja @@notPUSHtype3orPOPype3
+					cmp byte ptr[unoByte], 0Fh
+					je @@notPUSHtype3orPOPype3
+					shr byte ptr[unoByte], 1
+					jc @@POPtype3
+					printStr op_PUSH
+					jmp @@nowPrintSegReg
+					@@POPtype3:
+					printStr op_POP
+					@@nowPrintSegReg:
+					push cx
+					mov cx, 000Ch
+					and cl, byte ptr[unoByte]
+					cmp cl, 0
+					jne @@notES
+					printStr segRegES
+					jmp @@doneWithThis
+					@@notES:
+					cmp cl, 04h
+					jne @@notCS
+					printStr segRegCS
+					jmp @@doneWithThis
+					@@notCS:
+					cmp cl, 08h
+					jne @@notSS
+					printStr segRegSS
+					jmp @@doneWithThis
+					@@notSS:
+					printStr segRegDS
+					@@doneWithThis:
+					pop cx
+					ret
+					@@notPUSHtype3orPOPype3:
+					
+					call printUnknown
+					
+				@@FAR20to3F:
+					
+					cmp byte ptr[unoByte], 020h
+					jb @@notANDtype1
+					cmp byte ptr[unoByte], 023h
+					ja @@notANDtype1
+					printStr op_AND
+					call addressDW
+					ret
+					@@notANDtype1:
+					
+					cmp byte ptr[unoByte], 024h
+					jb @@notANDtype3
+					cmp byte ptr[unoByte], 025h
+					ja @@notANDtype3
+					printStr op_AND
+					call immToAccu
+					ret
+					@@notANDtype3:
+					
+					cmp byte ptr[unoByte], 027h
+					jne @@notBAA
+					printStr op_BAA
+					ret
+					@@notBAA:
+					
+					cmp byte ptr[unoByte], 028h
+					jb @@notSUBtype1
+					cmp byte ptr[unoByte], 02Bh
+					ja @@notSUBtype1
+					printStr op_SUB
+					call addressDW
+					ret
+					@@notSUBtype1:
+					
+					cmp byte ptr[unoByte], 02Ch
+					jb @@notSUBtype3
+					cmp byte ptr[unoByte], 02Dh
+					ja @@notSUBtype3
+					printStr op_SUB
+					call immToAccu
+					ret
+					@@notSUBtype3:
+					
+					cmp byte ptr[unoByte], 02Fh
+					jne @@notDAS
+					printStr op_DAS
+					ret
+					@@notDAS:
+					
+					cmp byte ptr[unoByte], 030h
+					jb @@notXORtype1
+					cmp byte ptr[unoByte], 033h
+					ja @@notXORtype1
+					printStr op_XOR
+					call addressDW
+					ret
+					@@notXORtype1:
+					
+					cmp byte ptr[unoByte], 034h
+					jb @@notXORtype3
+					cmp byte ptr[unoByte], 035h
+					ja @@notXORtype3
+					printStr op_XOR
+					call immToAccu
+					ret
+					@@notXORtype3:
+					
+					cmp byte ptr[unoByte], 037h
+					jne @@notAAA
+					printStr op_AAA
+					ret
+					@@notAAA:
+					
+					cmp byte ptr[unoByte], 038h
+					jb @@notCMPtype1
+					cmp byte ptr[unoByte], 03Bh
+					ja @@notCMPtype1
+					printStr op_CMP
+					call addressDW
+					ret
+					@@notCMPtype1:
+					
+					cmp byte ptr[unoByte], 03Ch
+					jb @@notCMPtype2
+					cmp byte ptr[unoByte], 03Dh
+					ja @@notCMPtype2
+					printStr op_CMP
+					call immToAccu
+					ret
+					@@notCMPtype2:
+					
+					cmp byte ptr[unoByte], 03Fh
+					jne @@notAAS
+					printStr op_AAS
+					ret
+					@@notAAS:
+					
+					call printUnknown
+					
+			@@FAR40to7F:
+				cmp byte ptr[unoByte], 05Fh
+				ja @@near60to7F
+				jmp @@40to5F
+				@@near60to7F:
+				lea di, @@FAR60to7F
+				jmp di
+				@@40to5F:
+					
+					cmp byte ptr[unoByte], 040h
+					jb @@notINCtype2
+					cmp byte ptr[unoByte], 047h
+					ja @@notINCtype2
+					printStr op_INC
+					push bx
+					mov bx, -0005h
+					call printRegWord
+					pop bx
+					ret
+					@@notINCtype2:
+					
+					cmp byte ptr[unoByte], 048h
+					jb @@notDECtype2
+					cmp byte ptr[unoByte], 04Fh
+					ja @@notDECtype2
+					printStr op_DEC
+					push bx
+					mov bx, -0005h
+					call printRegWord
+					pop bx
+					ret
+					@@notDECtype2:
+					
+					cmp byte ptr[unoByte], 050h
+					jb @@notPUSHtype2
+					cmp byte ptr[unoByte], 057h
+					ja @@notPUSHtype2
+					printStr op_PUSH
+					push bx
+					mov bx, -0005h
+					call printReg
+					pop bx
+					ret
+					@@notPUSHtype2:
+					
+					cmp byte ptr[unoByte], 058h
+					jb @@notPOPtype2
+					cmp byte ptr[unoByte], 05Fh
+					ja @@notPOPtype2
+					printStr op_POP
+					push bx
+					mov bx, -0005h
+					call printRegWord
+					pop bx
+					ret
+					@@notPOPtype2:
+					
+					call printUnknown
+					
+				@@FAR60to7F:
+					
+					cmp byte ptr[unoByte], 070h
+					jb @@not70to7F
+					cmp byte ptr[unoByte], 07Fh
+					ja @@not70to7F
+					call decipher70to7F
+					ret
+					@@not70to7F:
+					
+					call printUnknown
 		
-		cmp byte ptr[unoByte], 09Ah
-		jne @@notCALLtype2
-		printStr op_CALL
-		printChar ' '
-		push ax
-		readByte dosByte
-		readByte tresByte
-		readByte cuatroByte
-		readByte cincoByte
-		
-		mov al, byte ptr[cincoByte]
-		call printHex
-		mov al, byte ptr[cuatroByte]
-		call printHex
-		printChar ':'
-		mov al, byte ptr[tresByte]
-		call printHex
-		mov al, byte ptr[dosByte]
-		call printHex
-		pop ax
-		ret
-		@@notCALLtype2:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^CALL
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvJMP
-		cmp byte ptr[unoByte], 0E9h
-		jne @@notJMPtype1
-		printStr op_JMP
-		printChar ' '
-		push ax
-		readByte dosByte
-		readByte tresByte
-		mov ax, word ptr[currentIP]
-		add ax, word ptr[dosByte]
-		xchg al, ah
-		call printHex
-		xchg al, ah
-		call printHex
-		pop ax
-		ret
-		@@notJMPtype1:
-		
-		cmp byte ptr[unoByte], 0EBh
-		jne @@notJMPtype2
-		printStr op_JMP
-		call calcJMP
-		ret
-		@@notJMPtype2:
-		
-		cmp byte ptr[unoByte], 0EAh
-		jne @@notJMPtype4
-		printStr op_JMP
-		printChar ' '
-		push ax
-		readByte dosByte
-		readByte tresByte
-		readByte cuatroByte
-		readByte cincoByte
-		
-		mov al, byte ptr[cincoByte]
-		call printHex
-		mov al, byte ptr[cuatroByte]
-		call printHex
-		printChar ':'
-		mov al, byte ptr[tresByte]
-		call printHex
-		mov al, byte ptr[dosByte]
-		call printHex
-		pop ax
-		ret
-		@@notJMPtype4:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^JMP
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvRET
-		cmp byte ptr[unoByte], 0C3h
-		jne @@notRETtype1
-		printStr op_RET
-		ret
-		@@notRETtype1:
-		
-		cmp byte ptr[unoByte], 0C2h
-		jne @@notRETtype2
-		printStr op_RET
-		printChar ' '
-		printImmediate '2'
-		ret
-		@@notRETtype2:
-		
-		cmp byte ptr[unoByte], 0CBh
-		jne @@notRETtype3
-		printStr op_RETF
-		ret
-		@@notRETtype3:
-		
-		cmp byte ptr[unoByte], 0CAh
-		jne @@notRETtype4
-		printStr op_RETF
-		printChar ' '
-		printImmediate '2'
-		ret
-		@@notRETtype4:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^RET
-		
-		cmp byte ptr[unoByte], 0E2h
-		jne @@notLOOP
-		printStr op_LOOP
-		call calcJMP
-		ret
-		@@notLOOP:
-		
-		cmp byte ptr[unoByte], 0E1h
-		jne @@notLOOPE
-		printStr op_LOOPE
-		call calcJMP
-		ret
-		@@notLOOPE:
-		
-		cmp byte ptr[unoByte], 0E0h
-		jne @@notLOOPNE
-		printStr op_LOOPNE
-		call calcJMP
-		ret
-		@@notLOOPNE:
-		
-		cmp byte ptr[unoByte], 0E3h
-		jne @@notJCXZ
-		printStr op_JCXZ
-		call calcJMP
-		ret
-		@@notJCXZ:
-		
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvINT
-		cmp byte ptr[unoByte], 0CDh
-		jne @@notINTtype1
-		printStr op_INT
-		printChar ' '
-		printImmediate '1'
-		ret
-		@@notINTtype1:
-		
-		cmp byte ptr[unoByte], 0CCh
-		jne @@notINTtype2
-		printStr op_INT
-		printChar ' '
-		printChar '3'
-		ret
-		@@notINTtype2:
-		
-		cmp byte ptr[unoByte], 0CEh
-		jne @@notINTO
-		printStr op_INTO
-		ret
-		@@notINTO:
-		
-		cmp byte ptr[unoByte], 0CFh
-		jne @@notIRET
-		printStr op_IRET
-		ret
-		@@notIRET:
-;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^INT
-		
-		cmp byte ptr[unoByte], 0F8h
-		jne @@notCLC
-		printStr op_CLC
-		ret
-		@@notCLC:
-		
-		cmp byte ptr[unoByte], 0F5h
-		jne @@notCMC
-		printStr op_CMC
-		ret
-		@@notCMC:
-		
-		cmp byte ptr[unoByte], 0F9h
-		jne @@notSTC
-		printStr op_STC
-		ret
-		@@notSTC:
-		
-		cmp byte ptr[unoByte], 0FCh
-		jne @@notCLD
-		printStr op_CLD
-		ret
-		@@notCLD:
-		
-		cmp byte ptr[unoByte], 0FDh
-		jne @@notSTD
-		printStr op_STD
-		ret
-		@@notSTD:
-		
-		cmp byte ptr[unoByte], 0FAh
-		jne @@notCLI
-		printStr op_CLI
-		ret
-		@@notCLI:
-		
-		cmp byte ptr[unoByte], 0FBh
-		jne @@notSTI
-		printStr op_STI
-		ret
-		@@notSTI:
-		
-		cmp byte ptr[unoByte], 0F4h
-		jne @@notHLT
-		printStr op_HLT
-		ret
-		@@notHLT:
-		
-		cmp byte ptr[unoByte], 09Bh
-		jne @@notWAIT
-		printStr op_WAIT
-		printStr op_UNUSED
-		ret
-		@@notWAIT:
-		
-		cmp byte ptr[unoByte], 0F0h
-		jne @@notLOCK
-		printStr op_LOCK
-		printStr op_UNUSED
-		ret
-		@@notLOCK:
-		
-		printStr op_unknown
-		mov al, byte ptr[unoByte]
-		call printHex
-		ret
+		@@FAR80toFF:
+			cmp byte ptr[unoByte], 0BFh
+			ja @@nearC0toFF
+			jmp @@80toBF
+			@@nearC0toFF:
+			lea di, @@FARC0toFF
+			jmp di
+			@@80toBF:
+				cmp byte ptr[unoByte], 09Fh
+				ja @@nearA0toBF
+				jmp @@80to9F
+				@@nearA0toBF:
+				lea di, @@FAR80to9F
+				jmp di
+				@@80to9F:
+					
+					cmp byte ptr[unoByte], 080h
+					jb @@not80to83
+					cmp byte ptr[unoByte], 083h
+					ja @@not80to83
+					call decipher80to83
+					ret
+					@@not80to83:
+					
+					cmp byte ptr[unoByte], 084h
+					jb @@notTESTtype1
+					cmp byte ptr[unoByte], 085h
+					ja @@notTESTtype1
+					printStr op_TEST
+					call addressDW
+					ret
+					@@notTESTtype1:
+					
+					cmp byte ptr[unoByte], 086h
+					jb @@notXCHGtype1
+					cmp byte ptr[unoByte], 087h
+					ja @@notXCHGtype1
+					printStr op_XCHG
+					mov bx, 0000h
+					call printReg
+					printChar ','
+					call readByteMakeBinaryDos
+					mov byte ptr[WordOrBytePtr], 01h
+					call printRM
+					ret
+					@@notXCHGtype1:
+					
+					cmp byte ptr[unoByte], 088h
+					jb @@notMOVtype1
+					cmp byte ptr[unoByte], 08Bh
+					ja @@notMOVtype1
+					printStr op_MOV
+					call addressDW
+					ret
+					@@notMOVtype1:
+					
+					cmp byte ptr[unoByte], 08Ch
+					je @@MOVtype6or7
+					cmp byte ptr[unoByte], 08Eh
+					je @@MOVtype6or7
+					jmp @@notMOVtype6or7
+					@@MOVtype6or7:
+					printStr op_MOV
+					call segmentMOV
+					ret
+					@@notMOVtype6or7:
+					
+					cmp byte ptr[unoByte], 08Dh
+					jne @@notLEA
+					printStr op_LEA
+					call address
+					ret
+					@@notLEA:
+					
+					cmp byte ptr[unoByte], 08Fh
+					jne @@notPOPtype1
+					printStr op_POP
+					call readByteMakeBinaryDos
+					mov byte ptr[WordOrBytePtr], 00h
+					call printRM
+					ret
+					@@notPOPtype1:
+					
+					cmp byte ptr[unoByte], 090h
+					jb @@notXCHGtype2
+					cmp byte ptr[unoByte], 097h
+					ja @@notXCHGtype2
+					printStr op_XCHG
+					printStr regAX
+					printChar ','
+					push bx
+					mov bx, -0005h
+					call printRegWord
+					pop bx
+					ret
+					@@notXCHGtype2:
+					
+					cmp byte ptr[unoByte], 098h
+					jne @@notCBW
+					printStr op_CBW
+					ret
+					@@notCBW:
+					
+					cmp byte ptr[unoByte], 099h
+					jne @@notCWD
+					printStr op_CWD
+					ret
+					@@notCWD:
+					
+					cmp byte ptr[unoByte], 09Ah
+					jne @@notCALLtype2
+					printStr op_CALL
+					printChar ' '
+					push ax
+					readByte dosByte
+					readByte tresByte
+					readByte cuatroByte
+					readByte cincoByte
+					mov al, byte ptr[cincoByte]
+					call printHex
+					mov al, byte ptr[cuatroByte]
+					call printHex
+					printChar ':'
+					mov al, byte ptr[tresByte]
+					call printHex
+					mov al, byte ptr[dosByte]
+					call printHex
+					pop ax
+					ret
+					@@notCALLtype2:
+					
+					cmp byte ptr[unoByte], 09Bh
+					jne @@notWAIT
+					printStr op_WAIT
+					printStr op_UNUSED
+					ret
+					@@notWAIT:
+					
+					cmp byte ptr[unoByte], 09Ch
+					jne @@notPUSHF
+					printStr op_PUSHF
+					ret
+					@@notPUSHF:
+					
+					cmp byte ptr[unoByte], 09Dh
+					jne @@notPOPF
+					printStr op_POPF
+					ret
+					@@notPOPF:
+					
+					cmp byte ptr[unoByte], 09Eh
+					jne @@notSAHF
+					printStr op_SAHF
+					ret
+					@@notSAHF:
+					
+					cmp byte ptr[unoByte], 09Fh
+					jne @@notLAHF
+					printStr op_LAHF
+					ret
+					@@notLAHF:
+					
+					call printUnknown
+					
+				@@FAR80to9F:
+					
+					cmp byte ptr[unoByte], 0A0h
+					jb @@notMOVtype4or5
+					cmp byte ptr[unoByte], 0A3h
+					ja @@notMOVtype4or5
+					call specialMOV
+					ret
+					@@notMOVtype4or5:
+
+					cmp byte ptr[unoByte], 0A8h
+					jb @@notTESTtype3
+					cmp byte ptr[unoByte], 0A9h
+					ja @@notTESTtype3
+					printStr op_TEST
+					call immToAccu
+					ret
+					@@notTESTtype3:
+				
+					cmp byte ptr[unoByte], 0B0h
+					jb @@notMOVtype3
+					cmp byte ptr[unoByte], 0BFh
+					ja @@notMOVtype3
+					printStr op_MOV
+					call OPKByteWREG
+					ret
+					@@notMOVtype3:
+					
+					call printUnknown
+				
+			@@FARC0toFF:
+				cmp byte ptr[unoByte], 0DFh
+				ja @@nearE0toFF
+				jmp @@C0toDF
+				@@nearE0toFF:
+				lea di, @@FARE0toFF
+				jmp di
+				@@C0toDF:
+				
+					cmp byte ptr[unoByte], 0C2h
+					jne @@notRETtype2
+					printStr op_RET
+					printChar ' '
+					printImmediate '2'
+					ret
+					@@notRETtype2:			;C0, C1 irgi pagal pletini???
+					
+					cmp byte ptr[unoByte], 0C3h
+					jne @@notRETtype1
+					printStr op_RET
+					ret
+					@@notRETtype1:
+					
+					cmp byte ptr[unoByte], 0C4h
+					jne @@notLES
+					printStr op_LES
+					call address
+					ret
+					@@notLES:
+					
+					cmp byte ptr[unoByte], 0C5h
+					jne @@notLDS
+					printStr op_LDS
+					call address
+					ret
+					@@notLDS:
+					
+					cmp byte ptr[unoByte], 0C6h
+					jb @@notMOVtype2
+					cmp byte ptr[unoByte], 0C7h
+					ja @@notMOVtype2
+					printStr op_MOV
+					call readByteMakeBinaryDos
+					mov byte ptr[WordOrBytePtr], 01h
+					call printRM
+					printChar ','
+					printChar ' '
+					printImmediate 'w'
+					ret
+					@@notMOVtype2:
+					
+					cmp byte ptr[unoByte], 0CAh
+					jne @@notRETtype4
+					printStr op_RETF
+					printChar ' '
+					printImmediate '2'
+					ret
+					@@notRETtype4:
+					
+					cmp byte ptr[unoByte], 0CBh
+					jne @@notRETtype3
+					printStr op_RETF
+					ret
+					@@notRETtype3:
+					
+					cmp byte ptr[unoByte], 0CCh
+					jne @@notINTtype2
+					printStr op_INT
+					printChar ' '
+					printChar '3'
+					ret
+					@@notINTtype2:
+					
+					cmp byte ptr[unoByte], 0CDh
+					jne @@notINTtype1
+					printStr op_INT
+					printChar ' '
+					printImmediate '1'
+					ret
+					@@notINTtype1:
+					
+					cmp byte ptr[unoByte], 0CEh
+					jne @@notINTO
+					printStr op_INTO
+					ret
+					@@notINTO:
+					
+					cmp byte ptr[unoByte], 0CFh
+					jne @@notIRET
+					printStr op_IRET
+					ret
+					@@notIRET:
+					
+					cmp byte ptr[unoByte], 0D0h
+					jb @@notD0toD3
+					cmp byte ptr[unoByte], 0D3h
+					ja @@notD0toD3
+					call decipherD0toD3
+					ret
+					@@notD0toD3:
+					
+					cmp byte ptr[unoByte], 0D4h		;?????????
+					jne @@notAAM
+					printStr op_AAM
+					printChar ' '
+					printImmediate '1'
+					ret
+					@@notAAM:
+					
+					cmp byte ptr[unoByte], 0D5h		;?????????
+					jne @@notAAD
+					printStr op_AAD
+					printChar ' '
+					printImmediate '1'
+					ret
+					@@notAAD:				;D6 ~ N/A
+					
+					cmp byte ptr[unoByte], 0D7h
+					jne @@notXLAT
+					printStr op_XLAT
+					ret
+					@@notXLAT:				;D8, D9, DA, DB, DC, DD, DE, DF ~ FPU su pletiniais	
+					
+					call printUnknown
+					
+				@@FARE0toFF:
+					
+					cmp byte ptr[unoByte], 0E0h
+					jne @@notLOOPNE
+					printStr op_LOOPNE
+					call calcJMP
+					ret
+					@@notLOOPNE:
+					
+					cmp byte ptr[unoByte], 0E1h
+					jne @@notLOOPE
+					printStr op_LOOPE
+					call calcJMP
+					ret
+					@@notLOOPE:
+					
+					cmp byte ptr[unoByte], 0E2h
+					jne @@notLOOP
+					printStr op_LOOP
+					call calcJMP
+					ret
+					@@notLOOP:
+					
+					cmp byte ptr[unoByte], 0E3h
+					jne @@notJCXZ
+					printStr op_JCXZ
+					call calcJMP
+					ret
+					@@notJCXZ:
+					
+					cmp byte ptr[unoByte], 0E4h
+					jb @@notINtype1
+					cmp byte ptr[unoByte], 0E5h
+					ja @@notINtype1
+					printStr op_IN
+					cmp byte ptr[unoByte], 0E4h
+					je @@INAL1
+					printStr regAX
+					jmp @@doneINtype1
+					@@INAL1:
+					printStr regAL
+					@@doneINtype1:
+					printChar ','
+					printChar ' '
+					printImmediate '1'
+					ret
+					@@notINtype1:
+					
+					cmp byte ptr[unoByte], 0E6h
+					jb @@notOUTtype1
+					cmp byte ptr[unoByte], 0E7h
+					ja @@notOUTtype1
+					printStr op_OUT
+					printChar ' '
+					printImmediate '1'
+					printChar ','
+					cmp byte ptr[unoByte], 0E6h
+					je @@OUTAL1
+					printStr regAX
+					ret
+					@@OUTAL1:
+					printStr regAL
+					ret
+					@@notOUTtype1:
+					
+					cmp byte ptr[unoByte], 0E8h
+					jne @@notCALLtype1
+					printStr op_CALL
+					printChar ' '
+					push ax
+					readByte dosByte
+					readByte tresByte
+					mov ax, word ptr[currentIP]
+					add ax, word ptr[dosByte]
+					xchg al, ah
+					call printHex
+					xchg al, ah
+					call printHex
+					pop ax
+					ret
+					@@notCALLtype1:
+					
+					cmp byte ptr[unoByte], 0E9h
+					jne @@notJMPtype1
+					printStr op_JMP
+					printChar ' '
+					push ax
+					readByte dosByte
+					readByte tresByte
+					mov ax, word ptr[currentIP]
+					add ax, word ptr[dosByte]
+					xchg al, ah
+					call printHex
+					xchg al, ah
+					call printHex
+					pop ax
+					ret
+					@@notJMPtype1:
+					
+					cmp byte ptr[unoByte], 0EAh
+					jne @@notJMPtype4
+					printStr op_JMP
+					printChar ' '
+					push ax
+					readByte dosByte
+					readByte tresByte
+					readByte cuatroByte
+					readByte cincoByte
+					mov al, byte ptr[cincoByte]
+					call printHex
+					mov al, byte ptr[cuatroByte]
+					call printHex
+					printChar ':'
+					mov al, byte ptr[tresByte]
+					call printHex
+					mov al, byte ptr[dosByte]
+					call printHex
+					pop ax
+					ret
+					@@notJMPtype4:
+					
+					cmp byte ptr[unoByte], 0EBh
+					jne @@notJMPtype2
+					printStr op_JMP
+					call calcJMP
+					ret
+					@@notJMPtype2:
+					
+					cmp byte ptr[unoByte], 0ECh
+					jb @@notINtype2
+					cmp byte ptr[unoByte], 0EDh
+					ja @@notINtype2
+					printStr op_IN
+					cmp byte ptr[unoByte], 0ECh
+					je @@INAL2
+					printStr regAX
+					jmp @@doneINtype2
+					@@INAL2:
+					printStr regAL
+					@@doneINtype2:
+					printChar ','
+					printStr regDX
+					ret
+					@@notINtype2:
+					
+					cmp byte ptr[unoByte], 0EEh
+					jb @@notOUTtype2
+					cmp byte ptr[unoByte], 0EFh
+					ja @@notOUTtype2
+					printStr op_OUT
+					printStr regDX
+					printChar ','
+					cmp byte ptr[unoByte], 0EEh
+					je @@OUTAL2
+					printStr regAX
+					jmp @@doneOUTtype2
+					@@OUTAL2:
+					printStr regAL
+					@@doneOUTtype2:
+					ret
+					@@notOUTtype2:
+				
+					cmp byte ptr[unoByte], 0F0h
+					jne @@notLOCK
+					printStr op_LOCK
+					printStr op_UNUSED
+					ret
+					@@notLOCK:
+					
+					cmp byte ptr[unoByte], 0F4h
+					jne @@notHLT
+					printStr op_HLT
+					ret
+					@@notHLT:
+					
+					cmp byte ptr[unoByte], 0F5h
+					jne @@notCMC
+					printStr op_CMC
+					ret
+					@@notCMC:
+					
+					cmp byte ptr[unoByte], 0F6h
+					jb @@notF6toF7
+					cmp byte ptr[unoByte], 0F7h
+					ja @@notF6toF7
+					call decipherF6toF7
+					ret
+					@@notF6toF7:
+					
+					cmp byte ptr[unoByte], 0F8h
+					jne @@notCLC
+					printStr op_CLC
+					ret
+					@@notCLC:
+					
+					cmp byte ptr[unoByte], 0F9h
+					jne @@notSTC
+					printStr op_STC
+					ret
+					@@notSTC:
+					
+					cmp byte ptr[unoByte], 0FAh
+					jne @@notCLI
+					printStr op_CLI
+					ret
+					@@notCLI:
+					
+					cmp byte ptr[unoByte], 0FBh
+					jne @@notSTI
+					printStr op_STI
+					ret
+					@@notSTI:
+					
+					cmp byte ptr[unoByte], 0FCh
+					jne @@notCLD
+					printStr op_CLD
+					ret
+					@@notCLD:
+					
+					cmp byte ptr[unoByte], 0FDh
+					jne @@notSTD
+					printStr op_STD
+					ret
+					@@notSTD:
+					
+					cmp byte ptr[unoByte], 0FEh
+					jb @@notFForFE
+					call decipherFForFE
+					ret
+					@@notFForFE:
+					
+					call printUnknown
 	endp
 
-;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	decipherFForFE proc
 		call readByteMakeBinaryDos
 		
@@ -1507,11 +1550,14 @@ locals @@
 				jmp @@fin
 				@@OPKextra111:
 				printStr op_unknown		;111
+				push ax
 				mov al, byte ptr[unoByte]
 				call printHex
-				printChar ' '
 				mov al, byte ptr[dosByte]
-				call printHex
+				mov byte ptr[reuseByte+1], al
+				pop ax
+				mov byte ptr[reuseByte], 01h
+				dec byte ptr[operationByteCount]
 				ret
 		@@fin:
 		call printRM
@@ -1520,6 +1566,8 @@ locals @@
 	decipherF6toF7 proc
 		call readByteMakeBinaryDos
 		
+		mov byte ptr[WordOrBytePtr], 01h
+		
 		cmp byte ptr[addressByteBinary+2], 01h
 		je @@OPKextra1xx
 			cmp byte ptr[addressByteBinary+3], 01h
@@ -1527,19 +1575,22 @@ locals @@
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra001
 				printStr op_TEST		;000
-				mov byte ptr[WordOrBytePtr], 01h
 				call printRM
 				printChar ','
+				printChar ' '
 				printImmediate 'w'
-				jmp @@fin
+				ret
 				@@OPKextra001:
 				printStr op_unknown		;001
+				push ax
 				mov al, byte ptr[unoByte]
 				call printHex
-				printChar ' '
 				mov al, byte ptr[dosByte]
-				call printHex
-				jmp @@fin
+				mov byte ptr[reuseByte+1], al
+				pop ax
+				mov byte ptr[reuseByte], 01h
+				dec byte ptr[operationByteCount]
+				ret
 			@@OPKextra01x:
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra011
@@ -1566,7 +1617,6 @@ locals @@
 				@@OPKextra111:
 				printStr op_IDIV		;111
 		@@fin:
-		mov byte ptr[WordOrBytePtr], 01h
 		call printRM
 		ret
 	endp
@@ -1606,12 +1656,15 @@ locals @@
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra111
 				printStr op_unknown		;110
+				push ax
 				mov al, byte ptr[unoByte]
 				call printHex
-				printChar ' '
 				mov al, byte ptr[dosByte]
-				call printHex
-				jmp @@fin
+				mov byte ptr[reuseByte+1], al
+				pop ax
+				mov byte ptr[reuseByte], 01h
+				dec byte ptr[operationByteCount]
+				ret
 				@@OPKextra111:
 				printStr op_SAR		;111
 		@@fin:
@@ -1619,6 +1672,11 @@ locals @@
 		ret
 	endp
 	decipher80to83 proc
+		cmp byte ptr[unoByte], 082h
+		jne @@exists
+		
+		@@exists:
+		
 		call readByteMakeBinaryDos
 		
 		cmp byte ptr[addressByteBinary+2], 01h
@@ -1630,13 +1688,12 @@ locals @@
 				printStr op_ADD		;000
 				jmp @@fin
 				@@OPKextra001:
-				printStr op_unknown		;001
-				mov al, byte ptr[unoByte]
-				call printHex
+				printStr op_OR		;001
+				call printRM
+				printChar ','
 				printChar ' '
-				mov al, byte ptr[dosByte]
-				call printHex
-				jmp @@fin
+				printImmediate 'w'
+				ret
 			@@OPKextra01x:
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra011
@@ -1658,13 +1715,12 @@ locals @@
 			@@OPKextra11x:
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra111
-				printStr op_unknown		;110
-				mov al, byte ptr[unoByte]
-				call printHex
+				printStr op_XOR		;110
+				call printRM
+				printChar ','
 				printChar ' '
-				mov al, byte ptr[dosByte]
-				call printHex
-				jmp @@fin
+				printImmediate 'w'
+				ret
 				@@OPKextra111:
 				printStr op_CMP		;111
 		@@fin:
@@ -1672,98 +1728,96 @@ locals @@
 		ret
 	endp
 	decipher70to7F proc
-		cmp byte ptr[unoByte], 074h
-		jne @@notJE
-		printStr op_JE
-		jmp @@fin
-		@@notJE:
-		
-		cmp byte ptr[unoByte], 07Ch
-		jne @@notJL
-		printStr op_JL
-		jmp @@fin
-		@@notJL:
-		
-		cmp byte ptr[unoByte], 07Eh
-		jne @@notJLE
-		printStr op_JLE
-		jmp @@fin
-		@@notJLE:
-		
-		cmp byte ptr[unoByte], 072h
-		jne @@notJB
-		printStr op_JB
-		jmp @@fin
-		@@notJB:
-		
-		cmp byte ptr[unoByte], 076h
-		jne @@notJBE
-		printStr op_JBE
-		jmp @@fin
-		@@notJBE:
-		
-		cmp byte ptr[unoByte], 07Ah
-		jne @@notJP
-		printStr op_JP
-		jmp @@fin
-		@@notJP:
-		
-		cmp byte ptr[unoByte], 070h
-		jne @@notJO
-		printStr op_JO
-		jmp @@fin
-		@@notJO:
-		
-		cmp byte ptr[unoByte], 078h
-		jne @@notJS
-		printStr op_JS
-		jmp @@fin
-		@@notJS:
-		
-		cmp byte ptr[unoByte], 075h
-		jne @@notJNE
-		printStr op_JNE
-		jmp @@fin
-		@@notJNE:
-		
-		cmp byte ptr[unoByte], 07Dh
-		jne @@notJNL
-		printStr op_JNL
-		jmp @@fin
-		@@notJNL:
-		
-		cmp byte ptr[unoByte], 07Fh
-		jne @@notJG
-		printStr op_JG
-		jmp @@fin
-		@@notJG:
-		
-		cmp byte ptr[unoByte], 073h
-		jne @@notJNB
-		printStr op_JNB
-		jmp @@fin
-		@@notJNB:
-		
 		cmp byte ptr[unoByte], 077h
-		jne @@notJA
-		printStr op_JA
-		jmp @@fin
-		@@notJA:
-		
-		cmp byte ptr[unoByte], 07Bh
-		jne @@notJNP
-		printStr op_JNP
-		jmp @@fin
-		@@notJNP:
-		
-		cmp byte ptr[unoByte], 071h
-		jne @@notJNO
-		printStr op_JNO
-		jmp @@fin
-		@@notJNO:
-		
-		printStr op_JNS
-		
+		ja @@near78to7F
+		jmp @@70to77
+		@@near78to7F:
+		lea di, @@FAR78to7F
+		jmp di
+		@@70to77:
+			cmp byte ptr[unoByte], 073h
+			ja @@74to77
+				cmp byte ptr[unoByte], 071h
+				ja @@72or73
+					cmp byte ptr[unoByte], 070h
+					jne @@notJO
+						printStr op_JO
+						jmp @@fin
+						@@notJO:
+						
+						printStr op_JNO
+						jmp @@fin
+				@@72or73:
+						cmp byte ptr[unoByte], 072h
+						jne @@notJB
+						printStr op_JB
+						jmp @@fin
+						@@notJB:
+						
+						printStr op_JNB
+						jmp @@fin
+			@@74to77:
+				cmp byte ptr[unoByte], 075h
+				ja @@76or77
+					cmp byte ptr[unoByte], 074h
+					jne @@notJE
+						printStr op_JE
+						jmp @@fin
+						@@notJE:
+						
+						printStr op_JNE
+						jmp @@fin
+				@@76or77:
+						cmp byte ptr[unoByte], 076h
+						jne @@notJBE
+						printStr op_JBE
+						jmp @@fin
+						@@notJBE:
+						
+						printStr op_JA
+						jmp @@fin
+		@@FAR78to7F:
+			cmp byte ptr[unoByte], 07Bh
+			ja @@7Cto7F
+				cmp byte ptr[unoByte], 079h
+				ja @@7Aor7B
+					cmp byte ptr[unoByte], 078h
+					jne @@notJS
+						printStr op_JS
+						jmp @@fin
+						@@notJS:
+						
+						printStr op_JNS
+						jmp @@fin
+				@@7Aor7B:
+					cmp byte ptr[unoByte], 07Ah
+					jne @@notJP
+						printStr op_JP
+						jmp @@fin
+						@@notJP:
+						
+						printStr op_JNP
+						jmp @@fin
+			@@7Cto7F:
+				cmp byte ptr[unoByte], 07Dh
+				ja @@7Eor7F
+					cmp byte ptr[unoByte], 07Ch
+					jne @@notJL
+						printStr op_JL
+						jmp @@fin
+						@@notJL:
+						
+						printStr op_JNL
+						jmp @@fin
+				@@7Eor7F:
+					cmp byte ptr[unoByte], 07Eh
+					jne @@notJLE
+						printStr op_JLE
+						jmp @@fin
+						@@notJLE:
+						
+						printStr op_JG
+						
 		@@fin:
 		call calcJMP
 		ret
@@ -1777,6 +1831,7 @@ locals @@
 		mov al, byte ptr[currentIP+1]
 		call printHex
 		mov al, byte ptr[currentIP]
+		add al, byte ptr[operationByteCount]
 		add al, byte ptr[dosByte]
 		call printHex
 		pop ax
@@ -1935,23 +1990,36 @@ locals @@
 	endp
 	addressSW proc
 		push ax
-		push bx
 		
 		mov byte ptr[WordOrBytePtr], 01h
 		call printRM
 		printChar ','
 		printChar ' '
-		cmp byte ptr[OPKByteBinary+6], 01h
-		je @@notButNotNot
-		mov al, 01h
-		jmp @@yes
-		@@notButNotNot:
-		mov al, 00h
-		@@yes:
-		and byte ptr[OPKByteBinary+7], al
-		printImmediate 'w'
 		
-		pop bx
+		cmp byte ptr[OPKByteBinary+7], 01h
+		jne @@noExpand
+			cmp byte ptr[OPKByteBinary+6], 00h
+			jne @@expand
+				printImmediate '2'
+				jmp @@fin
+			@@expand:
+			readByte tresByte
+			mov al, byte ptr[tresByte]
+			cmp al, 080h
+			jb @@possitiveExpand
+			neg al
+			printChar '-'
+			jmp @@expanded
+			@@possitiveExpand:
+			printChar '+'
+			@@expanded:
+			call printHex
+			jmp @@fin
+		@@noExpand:
+		printImmediate '1'
+		
+		@@fin:
+		
 		pop ax
 		ret
 	endp
@@ -2016,17 +2084,17 @@ locals @@
 		cmp byte ptr[redirectByte], 01h
 		jne @@noRedirection
 		mov byte ptr[redirectByte], 00h
-		cmp byte ptr[redirectByte+1], 'E'
+		cmp byte ptr[redirectByte+1], 026h
 		jne @@notRedirectToES
 		printStr segRegES
 		jmp @@redirected
 		@@notRedirectToES:
-		cmp byte ptr[redirectByte+1], 'C'
+		cmp byte ptr[redirectByte+1], 02Eh
 		jne @@notRedirectToCS
 		printStr segRegCS
 		jmp @@redirected
 		@@notRedirectToCS:
-		cmp byte ptr[redirectByte+1], 'S'
+		cmp byte ptr[redirectByte+1], 036h
 		jne @@notRedirectToSS
 		printStr segRegSS
 		jmp @@redirected
@@ -2232,9 +2300,51 @@ locals @@
 		@@fin:
 		ret
 	endp
-	getDaIP proc
-		pop ax
-		push ax
+	handleRedirect proc
+		mov byte ptr[redirectByte], 00h
+		lea si, printThis
+		lea di, printThisCopy
+		mov ch, 00h
+		mov cl, byte ptr[printHowMany]
+		mov byte ptr[printHowManyCopy], cl
+		mov byte ptr[printHowMany], 00h
+		rep movsb
+		dec byte ptr[operationByteCount]
+		mov cl, byte ptr[operationByteCount]
+		lea si, operationBytes+1
+		lea di, operationBytes
+		rep movsb
+		printChar ':'
+		mov al, byte ptr[currentIP+1]
+		call printHex
+		mov al, byte ptr[currentIP]
+		call printHex
+		printChar ' '
+		mov al, byte ptr[redirectByte+1]
+		call printHex
+		cmp al, 'E'
+		jne @@notHangingES
+		printStr segESUnused
+		jmp @@hangingRedirect
+		@@notHangingES:
+		cmp al, 'C'
+		jne @@notHangingCS
+		printStr segCSUnused
+		jmp @@hangingRedirect
+		@@notHangingCS:
+		cmp al, 'S'
+		jne @@notHangingSS
+		printStr segSSUnused
+		jmp @@hangingRedirect
+		@@notHangingSS:
+		printStr segDSUnused
+		@@hangingRedirect:
+		printChar 0Ah
+		lea si, printThisCopy
+		lea di, printThis
+		mov cl, byte ptr[printHowManyCopy]
+		mov byte ptr[printHowMany], cl
+		rep movsb
 		ret
 	endp
 ;__________________________________________________________________________________________________
@@ -2310,47 +2420,74 @@ main:
 	push ds
 	pop es
 	cld
-		
-;	push ax
-;	push cs
-;	pop ax
-;	xchg ah, al
-;	call printHex
-;	xchg ah, al
-;	call printHex
-;	printChar '|'
-;	call getDaIP
-;	xchg ah, al
-;	call printHex
-;	xchg ah, al
-;	call printHex
-;	printChar 0Ah
-;	pop ax
 	
-;	mov ax, 0000h
 	byteByByte:
-;	push ax
-	call decipher
-	printChar 0Ah
-;	pop ax
-;	inc ax
-;	mov cx, 0018h
-;	mov dx, 0000h
-;	push ax
-;	div cx
-;	pop ax
-;	cmp dx, 0000h
-;	jne byteByByte
-;	push ax
-;	push dx
-;	printStrNoWrite enterEnter
-;	mov ah, 0Ah
-;	lea dx, improvPause
-;	int 21h
-;	pop dx
-;	pop ax
-	jmp byteByByte
+	mov ch, 00h
+	mov cl, byte ptr[printHowMany]
+	mov byte ptr[printHowMany], 00h
+	mov al, 00h
+	lea di, printThis
+	repne stosb
+	mov byte ptr[operationByteCount], 00h
 	
+	call decipher
+	
+	cmp byte ptr[redirectByte], 01h
+	jne @@notHangingRedirect
+	call handleRedirect
+	@@notHangingRedirect:
+	
+	mov ah, 00h
+	mov al, byte ptr[printHowMany]
+	mov cx, ax
+	lea si, printThis
+	add si, ax
+	mov di, si
+	mov al, byte ptr[operationByteCount]
+	add ax, ax
+	add di, ax
+	cmp byte ptr[operationByteCount], 02h
+	ja lessTabs
+	inc di
+	lessTabs:
+	sub cx, 09h
+	std
+	rep movsb
+	cld
+	mov ah, byte ptr[printHowMany]
+	mov byte ptr[printHowMany], 0Ah
+	mov ch, 00h
+	mov cl, byte ptr[operationByteCount]
+	mov bx, 0000h
+	printAllHexes:
+	mov al, byte ptr[operationBytes+bx]
+	call printHex
+	inc bx
+	loop printAllHexes
+	
+	cmp byte ptr[operationByteCount], 02h
+	ja noMoreTabs
+	printChar 09h
+	noMoreTabs:
+	
+	sub ah, 0Ah
+	add byte ptr[printHowMany], ah
+	
+	mov cl, byte ptr[operationByteCount]
+	add word ptr[currentIP], cx
+	
+	printChar 0Ah
+	
+	lea dx, printThis
+	mov cl, byte ptr[printHowMany]
+	mov bx, word ptr[outFilePtr]
+	mov ah, 040h
+	int 21h
+	jnc @@writeSuccess
+	printStr errorWritingToOutputFile
+	.exit
+	@@writeSuccess:
+	jmp byteByByte
 	
 	mov bx, word ptr[filePtr]
 	mov ah, 03Eh
