@@ -1,3 +1,7 @@
+;
+;		Edvinas Smita - VU MIF PS 1k. 2gr.
+;
+
 .model small
 .stack 100h
 
@@ -29,7 +33,7 @@
 	
 	reachedEOF db 00h
 	reuseByte db 00, ?, ?			;+0 ~ ar (ir kiek) pernaudot, +1,+2 ~ ka pernaudot
-	redirectByte db 00, ?, ?		;+0 ~ ar (ir kiek) buvo nukreipta i kita seg., +1 ~ koks nukreipimas (26h, 2Eh, 36h, 3Eh, 64h)
+	redirectByte db 00, ?, ?		;+0 ~ ar (ir kiek) buvo nukreipta i kita seg., +1/2 ~ koks nukreipimas (26h, 2Eh, 36h, 3Eh, 64h)
 	;								fileReading
 	
 	;								fileWriting
@@ -301,14 +305,14 @@
 	eaDI db ' [DI]$'
 	eaBX db ' [BX]$'
 	
-	eaBXSIplus db ' [BX+SI+$'
-	eaBXDIplus db ' [BX+DI+$'
-	eaBPSIplus db ' [BP+SI+$'
-	eaBPDIplus db ' [BP+DI+$'
-	eaSIplus db ' [SI+$'
-	eaDIplus db ' [DI+$'
-	eaBPplus db ' [BP+$'
-	eaBXplus db ' [BX+$'
+	eaBXSIplus db ' [BX+SI$'
+	eaBXDIplus db ' [BX+DI$'
+	eaBPSIplus db ' [BP+SI$'
+	eaBPDIplus db ' [BP+DI$'
+	eaSIplus db ' [SI$'
+	eaDIplus db ' [DI$'
+	eaBPplus db ' [BP$'
+	eaBXplus db ' [BX$'
 	;								EA calc
 	
 	programParameter1 db 255 dup(?)
@@ -476,7 +480,16 @@ locals @@
 		cmp ah, 'm'
 		jne @@notMod
 			cmp byte ptr[addressByteBinary], 01h
-			je @@print2
+			jne @@modImm1
+			printChar '+'
+			jmp @@print2
+			@@modImm1:
+			cmp byte ptr[tresByte], 080h
+			jb @@plusOneByte
+			printChar '-'
+			jmp @@print1
+			@@plusOneByte:
+			printChar '+'
 			jmp @@print1
 		@@notMod:
 		
@@ -908,27 +921,22 @@ locals @@
 					@@POPtype3:
 					printStr op_POP
 					@@nowPrintSegReg:
-					push cx
-					mov cx, 000Ch
-					and cl, byte ptr[unoByte]
-					cmp cl, 0
+					cmp word ptr[OPKByteBinary+3], 0000h
 					jne @@notES
 					printStr segRegES
-					jmp @@doneWithThis
+					ret
 					@@notES:
-					cmp cl, 04h
+					cmp word ptr[OPKByteBinary+3], 0001h
 					jne @@notCS
 					printStr segRegCS
-					jmp @@doneWithThis
+					ret
 					@@notCS:
-					cmp cl, 08h
+					cmp word ptr[OPKByteBinary+3], 0100h
 					jne @@notSS
 					printStr segRegSS
-					jmp @@doneWithThis
+					ret
 					@@notSS:
 					printStr segRegDS
-					@@doneWithThis:
-					pop cx
 					ret
 					@@notPUSHtype3orPOPype3:
 					
@@ -2300,31 +2308,31 @@ locals @@
 				ret
 				@@notFXAM:
 				
-				cmp byte ptr[dosByte], 0E8h	;FPU transcendentine
+				cmp byte ptr[dosByte], 0E8h	;klasifikuota kaip transcendentine
 				jne @@notFLD1
 				printStr op_FLD1
 				ret
 				@@notFLD1:
 				
-				cmp byte ptr[dosByte], 0E9h	;FPU transcendentine
+				cmp byte ptr[dosByte], 0E9h	;klasifikuota kaip transcendentine
 				jne @@notFLDL2T
 				printStr op_FLDL2T
 				ret
 				@@notFLDL2T:
 				
-				cmp byte ptr[dosByte], 0EAh	;FPU transcendentine
+				cmp byte ptr[dosByte], 0EAh	;klasifikuota kaip transcendentine
 				jne @@notFLDL2E
 				printStr op_FLDL2E
 				ret
 				@@notFLDL2E:
 				
-				cmp byte ptr[dosByte], 0EBh	;FPU transcendentine
+				cmp byte ptr[dosByte], 0EBh	;klasifikuota kaip transcendentine
 				jne @@notFLDPI
 				printStr op_FLDPI
 				ret
 				@@notFLDPI:
 				
-				cmp byte ptr[dosByte], 0ECh	;FPU transcendentine
+				cmp byte ptr[dosByte], 0ECh	;klasifikuota kaip transcendentine		;<<<<<<<<<<<<
 				jne @@notFLDLG2
 				printStr op_FLDLG2
 				ret
@@ -2336,7 +2344,7 @@ locals @@
 				ret
 				@@notFLDLN2:
 				
-				cmp byte ptr[dosByte], 0EEh	;FPU transcendentine
+				cmp byte ptr[dosByte], 0EEh	;klasifikuota kaip transcendentine
 				jne @@notFLDZ
 				printStr op_FLDZ
 				ret
@@ -2345,25 +2353,25 @@ locals @@
 				call printUnknownReuseDos
 			@@FARF0toFF:
 				
-				cmp byte ptr[dosByte], 0F0h	;FPU transcendentine
+				cmp byte ptr[dosByte], 0F0h	;klasifikuota kaip transcendentine		;<<<<<<<<<<<<
 				jne @@notF2XM1
 				printStr op_F2XM1
 				ret
 				@@notF2XM1:
 				
-				cmp byte ptr[dosByte], 0F1h	;FPU transcendentine
+				cmp byte ptr[dosByte], 0F1h	;klasifikuota kaip transcendentine
 				jne @@notFYL2X
 				printStr op_FYL2X
 				ret
 				@@notFYL2X:
 				
-				cmp byte ptr[dosByte], 0F2h	;FPU transcendentine
+				cmp byte ptr[dosByte], 0F2h	;klasifikuota kaip transcendentine
 				jne @@notFPTAN
 				printStr op_FPTAN
 				ret
 				@@notFPTAN:
 				
-				cmp byte ptr[dosByte], 0F3h	;FPU transcendentine
+				cmp byte ptr[dosByte], 0F3h	;klasifikuota kaip transcendentine
 				jne @@notFPATAN
 				printStr op_FPATAN
 				ret
@@ -2399,19 +2407,19 @@ locals @@
 				ret
 				@@notFPREM:
 				
-				cmp byte ptr[dosByte], 0F9h	;FPU transcendentine
+				cmp byte ptr[dosByte], 0F9h	;klasifikuota kaip transcendentine
 				jne @@notFYL2XP1
 				printStr op_FYL2XP1
 				ret
 				@@notFYL2XP1:
 				
-				cmp byte ptr[dosByte], 0FAh
+				cmp byte ptr[dosByte], 0FAh		;<<<<<<<<<<<<
 				jne @@notFSQRT
 				printStr op_FSQRT
 				ret
 				@@notFSQRT:
 				
-				cmp byte ptr[dosByte], 0FBh
+				cmp byte ptr[dosByte], 0FBh		;<<<<<<<<<<<<
 				jne @@notFSINCO
 				printStr op_FSINCO
 				ret
@@ -3719,7 +3727,6 @@ locals @@
 		lea si, operationBytes+1
 		lea di, operationBytes
 		rep movsb
-		call updateCSIP
 		
 		mov al, byte ptr[redirectByte+1]
 		call printHex
@@ -3762,6 +3769,12 @@ locals @@
 		.exit
 		@@writeSuccess:
 		
+		mov bh, 00h
+		mov bl, byte ptr[printHowMany]
+		mov byte ptr[prnThisCS+bx+9], '$'
+		printStrNoWrite prnThisCS
+		printCharNoWrite 0Ah
+		
 		lea si, printThisCopy
 		lea di, printThis
 		mov cl, byte ptr[printHowManyCopy]
@@ -3774,6 +3787,7 @@ locals @@
 		mov byte ptr[redirectByte], al
 		@@fin:
 		inc word ptr[currentIP]
+		call updateCSIP
 		ret
 	endp
 ;__________________________________________________________________________________________________
