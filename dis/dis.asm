@@ -4,19 +4,19 @@
 ;__________________________________________________________________________________________________
 .data
 	;								strings
-	errorSyntax db 'Neteisingai ivesti parametrai.', 0Ah, 'Sintakse: *.exe ivestiesFailoPav. isvestiesFailoPav.', 0Ah, 024h
+	errorSyntax db 'Neteisingai ivesti parametrai.', 0Ah, 'Sintakse: *.exe ivestiesFailoPavadinimas isvestiesFailoPavadinimas', 0Ah, 024h
 	errorOpeningFile db 'Nepavyko atidaryti nurodyto failo. Terminuojama.', 0Ah, 24h
 	errorReadingFile db 'Nepavyksta NUSKAITYTI nurodyto failo. Terminuojama.', 0Ah, 24h
 	errorCreatingOutputFile db 'Nepavyko sukurti rezultatu failo. Terminuojama.', 0Ah, 024h
 	errorOpeningOutputFile db 'Nepavyko atidaryti rezultatu failo. Terminuojama.', 0Ah, 024h
 	errorWritingToOutputFile db 'Nepavyko irasyt i rezultatu faila. Terminuojama.', 0Ah, 024h
-	reachedEOF db '	Failas nuskaitytas iki galo.', 0Ah, 024h
+	reachedEOF db 26 dup('-'), 'Failas nuskaitytas iki galo!', 26 dup('-'), 024h
 	;								strings
 	
 	;								fileVars
 	outFilePtr dw ?
 	filePtr dw ?
-	currentIP dw 0100h
+	currentIP dw 00FFh
 	;								fileVars
 	
 	;								fileReading
@@ -25,7 +25,10 @@
 	tresByte db ?
 	cuatroByte db ?
 	cincoByte db ?
+	
 	printThis db ?
+	reuseByte db 00, ?			;+0 ~ ar pernaudot, +1 ~ ka pernaudot
+	redirectByte db 00, ?	;+0 ~ ar buvo nukreipta i kita seg., +1 ~ koks nukreipimas ('E', 'C', 'S', 'D')
 	;								fileReading
 	
 	;								komandos
@@ -124,6 +127,7 @@
 	op_ESC		db '	ESC$'		;neegzituoja.....
 	op_LOCK		db '	LOCK$'
 	
+	op_UNUSED	db ' (unused)$'
 	
 	op_unknown	db 09h, 'DB $'
 	;								komandos
@@ -151,13 +155,19 @@
 	segRegCS db ' CS$'
 	segRegSS db ' SS$'
 	segRegDS db ' DS$'
+	
+	segESUnused db '	SEG ES (unused)$'
+	segCSUnused db '	SEG CS (unused)$'
+	segSSUnused db '	SEG SS (unused)$'
+	segDSUnused db '	SEG DS (unused)$'
 	;								registrai
 	
 	;								EA calc
-	WordOrBytePtr db ?
+	WordOrBytePtr db ?			;auto, kai byte ptr[WordOrBytePtr] == 1
 	eaFAR db ' FAR$'			;kai byte ptr[WordOrBytePtr] == 2
-	eaWordPtr db ' WORD PTR$'	;kai byte ptr[WordOrBytePtr] == 1
-	eaBytePtr db ' BYTE PTR$'	;kitais atvejais
+	
+	eaWordPtr db ' WORD PTR$'	;override, kai 'W'
+	eaBytePtr db ' BYTE PTR$'	;override, kai 'B'
 	
 	eaBXSI db ' [BX+SI]$'
 	eaBXDI db ' [BX+DI]$'
@@ -182,19 +192,57 @@
 	OPKByteBinary db 8 dup (?)
 	addressByteBinary db 8 dup (?)
 	
-	enterEnter db '[ENTER]$'
-	improvPause db 3, 0, 0, 0, 0
+;	enterEnter db '[ENTER]$'
+;	improvPause db 3, 0, 0, 0, 0
 	debug db 75 dup ('_'), 'debug', '$'
-	tempp db ?
 ;__________________________________________________________________________________________________
 .code
 locals @@
+	printStrNoWrite macro kur
+		push ax
+		push dx
+		
+		mov ah, 09h
+		lea dx, kur
+		int 21h
+		
+		pop dx
+		pop ax
+	endm
 	printStr macro kur
 		push dx
 		lea dx, kur
 		call writeStr
 		pop dx
 	endm
+	
+	readByte macro which	;I kur skaityti
+		push dx
+		
+		lea dx, which
+		call readByteProc
+		
+		pop dx
+	endm
+	
+	printCharNoWrite macro char
+		push ax
+		push dx
+		
+		mov ah, 02h
+		mov dl, char
+		int 21h
+		
+		pop dx
+		pop ax
+	endm
+	printChar macro char
+		push dx
+		mov dl, char
+		call writeChar
+		pop dx
+	endm
+	
 	writeStr proc
 		push ax
 		push bx
@@ -226,12 +274,16 @@ locals @@
 		pop ax
 		ret
 	endp
-	printChar macro char
-		push dx
-		mov dl, char
-		call writeChar
-		pop dx
+	
+	printImmediate macro byWhat			;'W', jei pagal W bita, kuris ne 0-iame OPK bite - BX ~ kur W bitas
+		push ax							;'w', jei pagal W bita, kuris 0-iame OPK bite
+										;'m', jei pagal adresacijos baito mod
+		mov ah, byWhat					;'1', jei overridint i 1 baito spausdinima (default)
+		call printImmediateProc			;'2', jei overridint i 2 baitu spausdinima
+		
+		pop ax
 	endm
+	
 	writeChar proc
 		push ax
 		push bx
@@ -258,6 +310,7 @@ locals @@
 		pop ax
 		ret
 	endp
+	
 	printHex proc		;(AX)- AL yra spausdinamas hexas
 		push bx
 		push ax
@@ -291,8 +344,47 @@ locals @@
 	ret
 	endp
 	
+	printImmediateProc proc
+		readByte tresByte
+		
+		cmp ah, 'W'
+		jne @@notCustomBit
+			cmp byte ptr[addressbyteBinary+bx], 01h
+			je @@print2
+			jmp @@print1
+		@@notCustomBit:
+		
+		cmp ah, 'w'
+		jne @@not0thBit
+			cmp byte ptr[OPKByteBinary+7], 01h
+			je @@print2
+			jmp @@print1
+		@@not0thBit:
+		
+		cmp ah, 'm'
+		jne @@notMod
+			cmp byte ptr[addressByteBinary], 01h
+			je @@print2
+			jmp @@print1
+		@@notMod:
+		
+		cmp ah, '2'
+		je @@print2
+		
+		@@print1:
+			mov al, byte ptr[tresByte]
+			call printHex
+			ret
+		@@print2:
+			readByte cuatroByte
+			mov al, byte ptr[cuatroByte]
+			call printHex
+			mov al, byte ptr[tresByte]
+			call printHex
+			ret
+	endp
 	
-	readByte proc	;DX - baito, i kuri skaityti, offsetas
+	readByteProc proc
 		push ax
 		push bx
 		push cx
@@ -322,6 +414,7 @@ locals @@
 		pop ax
 		ret
 	endp
+	
 	makeBinary proc		;AL-baitas, kuri paverst i binary; SI-bufferis i kuri talpint binary
 		push bx
 		push cx
@@ -342,46 +435,114 @@ locals @@
 		pop bx
 		ret
 	endp
-	readByteMakeBinary proc		;BX-i pirma ar antra baita
+	readByteMakeBinaryUno proc
 		push ax
 		push dx
 		push si
 		
-		cmp bx, 0001h
-		je @@IPirma
-		lea dx, dosByte
-		call readByte
-		mov al, byte ptr[dosByte]
-		lea si, AddressByteBinary
-		jmp @@fin
-		@@IPirma:
 		lea dx, unoByte
-		call readByte
+		call readByteProc
 		mov al, byte ptr[unoByte]
 		lea si, OPKByteBinary
+		call MakeBinary
 		
-		@@fin:
-		call makeBinary
+		pop ax
 		pop si
 		pop dx
+		ret
+	endp
+	readByteMakeBinaryDos proc
+		push ax
+		push dx
+		push si
+		
+		lea dx, dosByte
+		call readByteProc
+		mov al, byte ptr[dosByte]
+		lea si, addressByteBinary
+		call MakeBinary
+		
 		pop ax
+		pop si
+		pop dx
 		ret
 	endp
 	
-	
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	decipher proc
+		push ax
+		push si
+		
+		cmp byte ptr[reuseByte], 01h
+		je @@dontReadByte
+		call readByteMakeBinaryUno
+		jmp @@readByte
+		@@dontReadByte:
+		mov byte ptr[reuseByte], 00h
+		mov al, byte ptr[reuseByte+1]
+		mov byte ptr[unoByte], al
+		lea si, OPKByteBinary
+		call makeBinary
+		@@readByte:
+		
+		@@hangingRedirect:
+		
 		printChar ':'
 		mov al, byte ptr[currentIP+1]
 		call printHex
 		mov al, byte ptr[currentIP]
 		call printHex
 		
-		push bx
-		mov bx, 0001h
-		call readByteMakeBinary
-		pop bx
-		mov al, byte ptr[unoByte]
+		cmp byte ptr[redirectByte], 01h
+		jne @@notHangingRedirect
+		mov byte ptr[redirectByte], 00h
+		cmp byte ptr[redirectByte+1], 'E'
+		jne @@notHangingES
+		printStr segESUnused
+		jmp @@hangingRedirect
+		@@notHangingES:
+		cmp byte ptr[redirectByte+1], 'C'
+		jne @@notHangingCS
+		printStr segCSUnused
+		jmp @@hangingRedirect
+		@@notHangingCS:
+		cmp byte ptr[redirectByte+1], 'S'
+		jne @@notHangingSS
+		printStr segSSUnused
+		jmp @@hangingRedirect
+		@@notHangingSS:
+		printStr segDSUnused
+		jmp @@hangingRedirect
+		@@notHangingRedirect:
+		
+		cmp byte ptr[unoByte], 026h
+		jne @@notRedirectToES
+		mov byte ptr[redirectByte+1], 'E'
+		jmp @@redirection
+		@@notRedirectToES:
+		cmp byte ptr[unoByte], 02Eh
+		jne @@notRedirectToCS
+		mov byte ptr[redirectByte+1], 'C'
+		jmp @@redirection
+		@@notRedirectToCS:
+		cmp byte ptr[unoByte], 036h
+		jne @@notRedirectToSS
+		mov byte ptr[redirectByte+1], 'S'
+		jmp @@redirection
+		@@notRedirectToSS:
+		cmp byte ptr[unoByte], 03Eh
+		jne @@notRedirection
+		mov byte ptr[redirectByte+1], 'D'
+		jmp @@redirection
+		
+		jmp @@notRedirection
+		@@redirection:
+		mov byte ptr[redirectByte], 01h
+		call readByteMakeBinaryUno
+		@@notRedirection:
+		
+		pop si
+		pop ax
 		
 		cmp byte ptr[unoByte], 0FEh
 		jb @@notFForFE
@@ -435,17 +596,12 @@ locals @@
 		cmp byte ptr[unoByte], 0C7h
 		ja @@notMOVtype2
 		printStr op_MOV
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		pop bx
-		call addressW
+		call readByteMakeBinaryDos
+		mov byte ptr[WordOrBytePtr], 01h
+		call printRM
 		printChar ','
 		printChar ' '
-		push bx
-		mov bx, -0001h
-		call printImmediate
-		pop bx
+		printImmediate 'w'
 		ret
 		@@notMOVtype2:
 		
@@ -472,6 +628,7 @@ locals @@
 		je @@MOVtype6or7
 		jmp @@notMOVtype6or7
 		@@MOVtype6or7:
+		printStr op_MOV
 		call segmentMOV
 		ret
 		@@notMOVtype6or7:
@@ -534,12 +691,9 @@ locals @@
 		cmp byte ptr[unoByte], 8Fh
 		jne @@notPOPtype1
 		printStr op_POP
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		mov byte ptr[WordOrBytePtr], 0
+		call readByteMakeBinaryDos
+		mov byte ptr[WordOrBytePtr], 00h
 		call printRM
-		pop bx
 		ret
 		@@notPOPtype1:
 		
@@ -565,11 +719,9 @@ locals @@
 		mov bx, 0000h
 		call printReg
 		printChar ','
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		pop bx
-		call addressW
+		call readByteMakeBinaryDos
+		mov byte ptr[WordOrBytePtr], 01h
+		call printRM
 		ret
 		@@notXCHGtype1:
 		
@@ -603,12 +755,7 @@ locals @@
 		@@doneINtype1:
 		printChar ','
 		printChar ' '
-		push dx
-		lea dx, dosByte
-		call readByte
-		mov al, byte ptr[dosByte]
-		call printHex
-		pop dx
+		printImmediate '1'
 		ret
 		@@notINtype1:
 		
@@ -637,12 +784,7 @@ locals @@
 		ja @@notOUTtype1
 		printStr op_OUT
 		printChar ' '
-		push dx
-		lea dx, dosByte
-		call readByte
-		mov al, byte ptr[dosByte]
-		call printHex
-		pop dx
+		printImmediate '1'
 		printChar ','
 		cmp byte ptr[unoByte], 0E6h
 		je @@OUTAL1
@@ -846,11 +988,9 @@ locals @@
 		cmp byte ptr[unoByte], 087h
 		ja @@notNEG
 		printStr op_NEG
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		pop bx
-		call addressW
+		call readByteMakeBinaryDos
+		mov byte ptr[WordOrBytePtr], 01h
+		call printRM
 		ret
 		@@notNEG:
 		
@@ -889,20 +1029,16 @@ locals @@
 		cmp byte ptr[unoByte], 0D4h		;?????????
 		jne @@notAAM
 		printStr op_AAM
-		push dx
-		lea dx, dosByte
-		call readByte
-		pop dx
+		printChar ' '
+		printImmediate '1'
 		ret
 		@@notAAM:
 		
 		cmp byte ptr[unoByte], 0D5h		;?????????
 		jne @@notAAD
 		printStr op_AAD
-		push dx
-		lea dx, dosByte
-		call readByte
-		pop dx
+		printChar ' '
+		printImmediate '1'
 		ret
 		@@notAAD:
 		
@@ -983,7 +1119,7 @@ locals @@
 		jb @@notXORtype1
 		cmp byte ptr[unoByte], 033h
 		ja @@notXORtype1
-		printStr op_TEST
+		printStr op_XOR
 		call addressDW
 		ret
 		@@notXORtype1:
@@ -992,7 +1128,7 @@ locals @@
 		jb @@notXORtype3
 		cmp byte ptr[unoByte], 035h
 		ja @@notXORtype3
-		printStr op_TEST
+		printStr op_XOR
 		call immToAccu
 		ret
 		@@notXORtype3:
@@ -1009,8 +1145,28 @@ locals @@
 		printChar 'N'
 		@@skipN:
 		printChar 'E'
+		
+		readByte unoByte
+		cmp byte ptr[unoByte], 0A4h
+		jb @@repUnused
+		cmp byte ptr[unoByte], 0A7h
+		jbe @@repUsed
+		
+		cmp byte ptr[unoByte], 0AAh
+		jb @@repUnused
+		cmp byte ptr[unoByte], 0AFh
+		jbe @@repUsed
+		
+		@@repUnused:
+		printStr op_UNUSED
+		push ax
+		mov al, byte ptr[unoByte]
+		mov byte ptr[reuseByte+1], al
+		pop ax
+		mov byte ptr[reuseByte], 01h
 		ret
 		@@notREP:
+		@@repUsed:
 		
 		cmp byte ptr[unoByte], 0A4h
 		jb @@notMOVS
@@ -1064,18 +1220,14 @@ locals @@
 		printStr op_CALL
 		printChar ' '
 		push ax
-		push dx
-		lea dx, dosByte
-		call readByte
-		lea dx, tresByte
-		call readByte
+		readByte dosByte
+		readByte tresByte
 		mov ax, word ptr[currentIP]
 		add ax, word ptr[dosByte]
 		xchg al, ah
 		call printHex
 		xchg al, ah
 		call printHex
-		pop dx
 		pop ax
 		ret
 		@@notCALLtype1:
@@ -1084,16 +1236,11 @@ locals @@
 		jne @@notCALLtype2
 		printStr op_CALL
 		printChar ' '
-		push dx
 		push ax
-		lea dx, dosByte
-		call readByte
-		lea dx, tresByte
-		call readByte
-		lea dx, cuatroByte
-		call readByte
-		lea dx, cincoByte
-		call readByte
+		readByte dosByte
+		readByte tresByte
+		readByte cuatroByte
+		readByte cincoByte
 		
 		mov al, byte ptr[cincoByte]
 		call printHex
@@ -1105,7 +1252,6 @@ locals @@
 		mov al, byte ptr[dosByte]
 		call printHex
 		pop ax
-		pop dx
 		ret
 		@@notCALLtype2:
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^CALL
@@ -1116,18 +1262,14 @@ locals @@
 		printStr op_JMP
 		printChar ' '
 		push ax
-		push dx
-		lea dx, dosByte
-		call readByte
-		lea dx, tresByte
-		call readByte
+		readByte dosByte
+		readByte tresByte
 		mov ax, word ptr[currentIP]
 		add ax, word ptr[dosByte]
 		xchg al, ah
 		call printHex
 		xchg al, ah
 		call printHex
-		pop dx
 		pop ax
 		ret
 		@@notJMPtype1:
@@ -1143,16 +1285,11 @@ locals @@
 		jne @@notJMPtype4
 		printStr op_JMP
 		printChar ' '
-		push dx
 		push ax
-		lea dx, dosByte
-		call readByte
-		lea dx, tresByte
-		call readByte
-		lea dx, cuatroByte
-		call readByte
-		lea dx, cincoByte
-		call readByte
+		readByte dosByte
+		readByte tresByte
+		readByte cuatroByte
+		readByte cincoByte
 		
 		mov al, byte ptr[cincoByte]
 		call printHex
@@ -1164,7 +1301,6 @@ locals @@
 		mov al, byte ptr[dosByte]
 		call printHex
 		pop ax
-		pop dx
 		ret
 		@@notJMPtype4:
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^JMP
@@ -1180,10 +1316,7 @@ locals @@
 		jne @@notRETtype2
 		printStr op_RET
 		printChar ' '
-		push bx
-		mov bx, -0002h
-		call printImmediate
-		pop bx
+		printImmediate '2'
 		ret
 		@@notRETtype2:
 		
@@ -1197,10 +1330,7 @@ locals @@
 		jne @@notRETtype4
 		printStr op_RETF
 		printChar ' '
-		push bx
-		mov bx, -0002h
-		call printImmediate
-		pop bx
+		printImmediate '2'
 		ret
 		@@notRETtype4:
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^RET
@@ -1219,22 +1349,26 @@ locals @@
 		ret
 		@@notLOOPE:
 		
-		cmp byte ptr[unoByte], 0E3h
+		cmp byte ptr[unoByte], 0E0h
 		jne @@notLOOPNE
 		printStr op_LOOPNE
 		call calcJMP
 		ret
 		@@notLOOPNE:
 		
+		cmp byte ptr[unoByte], 0E3h
+		jne @@notJCXZ
+		printStr op_JCXZ
+		call calcJMP
+		ret
+		@@notJCXZ:
+		
 ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvINT
 		cmp byte ptr[unoByte], 0CDh
 		jne @@notINTtype1
 		printStr op_INT
 		printChar ' '
-		push bx
-		mov bx, -0002h
-		call printImmediate
-		pop bx
+		printImmediate '1'
 		ret
 		@@notINTtype1:
 		
@@ -1310,12 +1444,14 @@ locals @@
 		cmp byte ptr[unoByte], 09Bh
 		jne @@notWAIT
 		printStr op_WAIT
+		printStr op_UNUSED
 		ret
 		@@notWAIT:
 		
 		cmp byte ptr[unoByte], 0F0h
 		jne @@notLOCK
 		printStr op_LOCK
+		printStr op_UNUSED
 		ret
 		@@notLOCK:
 		
@@ -1327,10 +1463,7 @@ locals @@
 
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	decipherFForFE proc
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		pop bx
+		call readByteMakeBinaryDos
 		
 		cmp byte ptr[addressByteBinary+2], 01h
 		je @@OPKextra1xx
@@ -1339,21 +1472,20 @@ locals @@
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra001
 				printStr op_INC		;000
-				mov byte ptr[WordOrBytePtr], 1
 				jmp @@fin
 				@@OPKextra001:
 				printStr op_DEC		;001
-				mov byte ptr[WordOrBytePtr], 1
+				mov byte ptr[WordOrBytePtr], 01h
 				jmp @@fin
 			@@OPKextra01x:
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra011
 				printStr op_CALL		;010
-				mov byte ptr[WordOrBytePtr], 1
+				mov byte ptr[WordOrBytePtr], 01h
 				jmp @@fin
 				@@OPKextra011:
 				printStr op_CALL		;011
-				mov byte ptr[WordOrBytePtr], 2
+				mov byte ptr[WordOrBytePtr], 'F'
 				jmp @@fin
 		@@OPKextra1xx:
 			cmp byte ptr[addressByteBinary+3], 01h
@@ -1361,22 +1493,23 @@ locals @@
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra101
 				printStr op_JMP		;100
-				mov byte ptr[WordOrBytePtr], 1
+				mov byte ptr[WordOrBytePtr], 01h
 				jmp @@fin
 				@@OPKextra101:
 				printStr op_JMP		;101
-				mov byte ptr[WordOrBytePtr], 2
+				mov byte ptr[WordOrBytePtr], 'F'
 				jmp @@fin
 			@@OPKextra11x:
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra111
 				printStr op_PUSH	;110
-				mov byte ptr[WordOrBytePtr], 0
+				mov byte ptr[WordOrBytePtr], 01h
 				jmp @@fin
 				@@OPKextra111:
 				printStr op_unknown		;111
 				mov al, byte ptr[unoByte]
 				call printHex
+				printChar ' '
 				mov al, byte ptr[dosByte]
 				call printHex
 				ret
@@ -1385,10 +1518,7 @@ locals @@
 		ret
 	endp
 	decipherF6toF7 proc
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		pop bx
+		call readByteMakeBinaryDos
 		
 		cmp byte ptr[addressByteBinary+2], 01h
 		je @@OPKextra1xx
@@ -1397,11 +1527,16 @@ locals @@
 				cmp byte ptr[addressByteBinary+4], 01h
 				je @@OPKextra001
 				printStr op_TEST		;000
+				mov byte ptr[WordOrBytePtr], 01h
+				call printRM
+				printChar ','
+				printImmediate 'w'
 				jmp @@fin
 				@@OPKextra001:
 				printStr op_unknown		;001
 				mov al, byte ptr[unoByte]
 				call printHex
+				printChar ' '
 				mov al, byte ptr[dosByte]
 				call printHex
 				jmp @@fin
@@ -1431,14 +1566,12 @@ locals @@
 				@@OPKextra111:
 				printStr op_IDIV		;111
 		@@fin:
-		call addressW
+		mov byte ptr[WordOrBytePtr], 01h
+		call printRM
 		ret
 	endp
 	decipherD0toD3 proc
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		pop bx
+		call readByteMakeBinaryDos
 		
 		cmp byte ptr[addressByteBinary+2], 01h
 		je @@OPKextra1xx
@@ -1475,6 +1608,7 @@ locals @@
 				printStr op_unknown		;110
 				mov al, byte ptr[unoByte]
 				call printHex
+				printChar ' '
 				mov al, byte ptr[dosByte]
 				call printHex
 				jmp @@fin
@@ -1485,10 +1619,7 @@ locals @@
 		ret
 	endp
 	decipher80to83 proc
-		push bx
-		mov bx, 0002h
-		call readByteMakeBinary
-		pop bx
+		call readByteMakeBinaryDos
 		
 		cmp byte ptr[addressByteBinary+2], 01h
 		je @@OPKextra1xx
@@ -1502,6 +1633,7 @@ locals @@
 				printStr op_unknown		;001
 				mov al, byte ptr[unoByte]
 				call printHex
+				printChar ' '
 				mov al, byte ptr[dosByte]
 				call printHex
 				jmp @@fin
@@ -1529,6 +1661,7 @@ locals @@
 				printStr op_unknown		;110
 				mov al, byte ptr[unoByte]
 				call printHex
+				printChar ' '
 				mov al, byte ptr[dosByte]
 				call printHex
 				jmp @@fin
@@ -1640,15 +1773,12 @@ locals @@
 	calcJMP proc
 		printChar 09h
 		push ax
-		push dx
-		lea dx, dosByte
-		call readByte
+		readByte dosByte
 		mov al, byte ptr[currentIP+1]
 		call printHex
 		mov al, byte ptr[currentIP]
 		add al, byte ptr[dosByte]
 		call printHex
-		pop dx
 		pop ax
 		ret
 	endp
@@ -1662,13 +1792,10 @@ locals @@
 		ret
 	endp
 	segmentMov proc
-		push bx
+		call readByteMakeBinaryDos
 		
-		mov bx, 0002h
-		call readByteMakeBinary
+		mov byte ptr[WordOrBytePtr], 'W'
 		
-		printStr op_MOV
-		mov bx, 0003h
 		cmp byte ptr[OPKByteBinary+6], 00h
 		je @@toRM
 			cmp word ptr[addressByteBinary+3], 00000h
@@ -1690,30 +1817,28 @@ locals @@
 			
 			@@printedToReg:
 			printChar ','
-			call printREGWord
-			jmp @@fin
+			call printRM
+			ret
 		@@toRM:
-			call printRegWord
+			call printRM
 			printChar ','
 			cmp word ptr[addressByteBinary+3], 00000h
 			jne @@notES
 			printStr segRegES
-			jmp @@fin
+			ret
 			@@notES:
 			cmp word ptr[addressByteBinary+3], 00001h
 			jne @@notCS
 			printStr segRegCS
-			jmp @@fin
+			ret
 			@@notCS:
 			cmp word ptr[addressByteBinary+3], 00100h
 			jne @@notSS
 			printStr segRegSS
-			jmp @@fin
+			ret
 			@@notSS:
 			printStr segRegDS
-		@@fin:
-		pop bx
-		ret
+			ret
 	endp
 	specialMOV proc
 		printStr op_MOV
@@ -1756,7 +1881,7 @@ locals @@
 		printChar ','
 		printChar ' '
 		mov bx, -0004h
-		call printImmediate
+		printImmediate 'W'
 		
 		pop bx
 		ret
@@ -1765,22 +1890,12 @@ locals @@
 	address proc
 		push bx
 		
-		mov bx, 0002h
-		call readByteMakeBinary
+		call readByteMakeBinaryDos
 		
 		mov bx, 0000h
 		call printRegWord
 		printChar ','
-		mov byte ptr[WordOrBytePtr], 0
-		call printRM
-		
-		pop bx
-		ret
-	endp
-	addressW proc		;Spausdina tik (*ka rodo RM*,)
-		push bx
-		
-		mov byte ptr[WordOrBytePtr], 1
+		mov byte ptr[WordOrBytePtr], 00h
 		call printRM
 		
 		pop bx
@@ -1796,16 +1911,14 @@ locals @@
 		@@printedCMPt3reg:
 		printChar ','
 		printChar ' '
-		push bx
-		mov bx, -0001h
-		call printImmediate
-		pop bx
+		printImmediate 'w'
 		ret
 	endp
 	addressVW proc
 		push bx
 		
 		mov bx, 0000h
+		mov byte ptr[WordOrBytePtr], 01h
 		call printRM
 		printChar ','
 		cmp byte ptr[OPKByteBinary+6], 01h
@@ -1824,7 +1937,7 @@ locals @@
 		push ax
 		push bx
 		
-		mov byte ptr[WordOrBytePtr], 1
+		mov byte ptr[WordOrBytePtr], 01h
 		call printRM
 		printChar ','
 		printChar ' '
@@ -1836,8 +1949,7 @@ locals @@
 		mov al, 00h
 		@@yes:
 		and byte ptr[OPKByteBinary+7], al
-		mov bx, -0001h
-		call printImmediate
+		printImmediate 'w'
 		
 		pop bx
 		pop ax
@@ -1846,11 +1958,10 @@ locals @@
 	addressDW proc
 		push bx
 		
-		mov bx, 0002h
-		call readByteMakeBinary
+		call readByteMakeBinaryDos
 		
 		mov bx, 0000h
-		mov byte ptr[WordOrBytePtr], 1
+		mov byte ptr[WordOrBytePtr], 00h
 		cmp byte ptr[OPKByteBinary+6], 01h
 		je @@toREG
 			call printRM
@@ -1875,21 +1986,55 @@ locals @@
 			jmp @@fin
 		@@notREG:
 		
-		cmp byte ptr[WordOrBytePtr], 02h
-		je @@printFAR
+		cmp byte ptr[WordOrBytePtr], 00h
+		je @@printed
 		cmp byte ptr[WordOrBytePtr], 01h
-		jne @@printedPtrPart
-		cmp byte ptr[OPKByteBinary+7], 01h
-		je @@word
-		printStr eaBytePtr
-		jmp @@printedPtrPart
-		@@word:
-		printStr eaWordPtr
-		@@printedPtrPart:
-		jmp @@printedAll
-		@@printFAR:
-		printStr eaFAR
-		@@printedAll:
+		jne @@notPrintAuto
+			cmp byte ptr[OPKByteBinary+7], 01h
+			je @@notAutoByte
+				printStr eaBytePtr
+				jmp @@printed
+			@@notAutoByte:
+			printStr eaWordPtr
+			jmp @@printed
+		@@notPrintAuto:
+		cmp byte ptr[WordOrBytePtr], 'F'
+		jne @@notPrintFAR
+			printStr eaFAR
+			jmp @@printed
+		@@notPrintFAR:
+		cmp byte ptr[WordOrBytePtr], 'B'
+		jne @@notBOverride
+			printStr eaBytePtr
+			jmp @@printed
+		@@notBOverride:
+		cmp byte ptr[WordOrBytePtr], 'W'
+		jne @@printed
+			printStr eaWordPtr
+		@@printed:
+		
+		cmp byte ptr[redirectByte], 01h
+		jne @@noRedirection
+		mov byte ptr[redirectByte], 00h
+		cmp byte ptr[redirectByte+1], 'E'
+		jne @@notRedirectToES
+		printStr segRegES
+		jmp @@redirected
+		@@notRedirectToES:
+		cmp byte ptr[redirectByte+1], 'C'
+		jne @@notRedirectToCS
+		printStr segRegCS
+		jmp @@redirected
+		@@notRedirectToCS:
+		cmp byte ptr[redirectByte+1], 'S'
+		jne @@notRedirectToSS
+		printStr segRegSS
+		jmp @@redirected
+		@@notRedirectToSS:
+		printStr segRegDS
+		@@redirected:
+		printChar ':'
+		@@noRedirection:
 		
 		cmp word ptr[addressByteBinary], 0000h
 		je @@mod00
@@ -1903,8 +2048,6 @@ locals @@
 	endp
 	
 	printEAmod01or10 proc
-		push bx
-		mov bx, 0000h
 		cmp byte ptr[addressByteBinary+5], 01h
 		je @@RM1xx
 			cmp byte ptr[addressByteBinary+6], 01h
@@ -1943,34 +2086,8 @@ locals @@
 				printStr eaBXplus	;111
 				jmp @@fin
 		@@fin:
-		call printImmediate
+		printImmediate 'm'
 		printChar ']'
-		pop bx
-		ret
-	endp
-	
-	printImmediate proc		;BX=-1, jei pagal W bita; BX=0, jei pagal mod (kai mod yra 01 arba 10)
-		push ax
-		push dx
-		cmp byte ptr[addressbyteBinary+bx], 01h
-		je @@plusD16
-			lea dx, tresByte
-			call readByte
-			mov al, byte ptr[tresByte]
-			call printHex
-			jmp @@fin
-		@@plusD16:
-			lea dx, tresByte
-			call readByte
-			lea dx, cuatroByte
-			call readByte
-			mov al, byte ptr[cuatroByte]
-			call printHex
-			mov al, byte ptr[tresByte]
-			call printHex
-		@@fin:
-		pop dx
-		pop ax
 		ret
 	endp
 	
@@ -2017,22 +2134,10 @@ locals @@
 	endp
 	
 	printDirectAddress proc
-		push ax
-		push dx
-		
 		printChar ' '
-		lea dx, tresByte
-		call readByte
-		lea dx, cuatroByte
-		call readByte
 		printChar '['
-		mov al, byte ptr[cuatroByte]
-		call printHex
-		mov al, byte ptr[tresByte]
-		call printHex
+		printImmediate '2'
 		printChar ']'
-		pop dx
-		pop ax
 		ret
 	endp
 	
@@ -2127,6 +2232,11 @@ locals @@
 		@@fin:
 		ret
 	endp
+	getDaIP proc
+		pop ax
+		push ax
+		ret
+	endp
 ;__________________________________________________________________________________________________
 main:
 	mov ax, @data
@@ -2134,7 +2244,7 @@ main:
 	
 	cmp ES:byte ptr[80h], 00h
 	jne noSyntaxError
-	printStr errorSyntax
+	printStrNoWrite errorSyntax
 	.exit
 	noSyntaxError:
 	mov ch, 00h
@@ -2175,7 +2285,7 @@ main:
 	lea dx, programParameter1
 	int 21h
 	jnc pavykoAtidarytFaila
-	printStr errorOpeningFile
+	printStrNoWrite errorOpeningFile
 	.exit
 	pavykoAtidarytFaila:
 	mov word ptr[filePtr], ax
@@ -2185,14 +2295,14 @@ main:
 	lea dx, programParameter2
 	int 21h
 	jnc @@createSuccess
-	printStr errorCreatingOutputFile
+	printStrNoWrite errorCreatingOutputFile
 	.exit
 	@@createSuccess:
 	mov ax, 03D01h
 	lea dx, programParameter2
 	int 21h
 	jnc @@outFileOpened
-	printStr errorOpeningOutputFile
+	printStrNoWrite errorOpeningOutputFile
 	.exit
 	@@outFileOpened:
 	mov word ptr[outFilePtr], ax
@@ -2200,6 +2310,22 @@ main:
 	push ds
 	pop es
 	cld
+		
+;	push ax
+;	push cs
+;	pop ax
+;	xchg ah, al
+;	call printHex
+;	xchg ah, al
+;	call printHex
+;	printChar '|'
+;	call getDaIP
+;	xchg ah, al
+;	call printHex
+;	xchg ah, al
+;	call printHex
+;	printChar 0Ah
+;	pop ax
 	
 ;	mov ax, 0000h
 	byteByByte:
@@ -2217,9 +2343,7 @@ main:
 ;	jne byteByByte
 ;	push ax
 ;	push dx
-;	mov ah, 09h
-;	lea dx, enterEnter
-;	int 21h
+;	printStrNoWrite enterEnter
 ;	mov ah, 0Ah
 ;	lea dx, improvPause
 ;	int 21h
