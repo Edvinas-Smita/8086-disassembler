@@ -29,7 +29,7 @@
 	
 	reachedEOF db 00h
 	reuseByte db 00, ?, ?			;+0 ~ ar (ir kiek) pernaudot, +1,+2 ~ ka pernaudot
-	redirectByte db 00, ?			;+0 ~ ar buvo nukreipta i kita seg., +1 ~ koks nukreipimas (26h, 2Eh, 36h, 3Eh)
+	redirectByte db 00, ?, ?		;+0 ~ ar (ir kiek) buvo nukreipta i kita seg., +1 ~ koks nukreipimas (26h, 2Eh, 36h, 3Eh, 64h)
 	;								fileReading
 	
 	;								fileWriting
@@ -38,210 +38,212 @@
 	operationBytes db 10 dup(?)
 	
 	printHowMany db 080h
+	prnThisCS db '0734:'
+	prnThisIP db ?, ?, ?, ?, ' '
 	printThis db 080h dup(?)
 	printHowManyCopy db ?
 	printThisCopy db 080h dup(?)
 	;								fileWriting
 	
 	;								komandos
-	op_MOV		db '	MOV$'
-	op_PUSH		db '	PUSH$'
-	op_POP		db '	POP$'
-	op_XCHG		db '	XCHG$'
-	op_IN		db '	IN$'
-	op_OUT		db '	OUT$'
-	op_XLAT		db '	XLAT$'
-	op_LEA		db '	LEA$'
-	op_LDS		db '	LDS$'
-	op_LES		db '	LES$'
-	op_LAHF		db '	LAHF$'
-	op_SAHF		db '	SAHF$'
-	op_PUSHF	db '	PUSHF$'
-	op_POPF		db '	POPF$'
+	op_MOV		db 20 dup(' '), 'MOV$'
+	op_PUSH		db 20 dup(' '), 'PUSH$'
+	op_POP		db 20 dup(' '), 'POP$'
+	op_XCHG		db 20 dup(' '), 'XCHG$'
+	op_IN		db 20 dup(' '), 'IN$'
+	op_OUT		db 20 dup(' '), 'OUT$'
+	op_XLAT		db 20 dup(' '), 'XLAT$'
+	op_LEA		db 20 dup(' '), 'LEA$'
+	op_LDS		db 20 dup(' '), 'LDS$'
+	op_LES		db 20 dup(' '), 'LES$'
+	op_LAHF		db 20 dup(' '), 'LAHF$'
+	op_SAHF		db 20 dup(' '), 'SAHF$'
+	op_PUSHF	db 20 dup(' '), 'PUSHF$'
+	op_POPF		db 20 dup(' '), 'POPF$'
 	
-	op_ADD		db '	ADD$'
-	op_ADC		db '	ADC$'
-	op_INC		db '	INC$'
-	op_AAA		db '	AAA$'
-	op_BAA		db '	BAA$'	;intel vadina BAA, debugas vadina DAA
-	op_SUB		db '	SUB$'
-	op_SSB		db '	SSB$'	;intel vadina SSB, debugas vadina SBB
-	op_DEC		db '	DEC$'
-	op_NEG		db '	NEG$'
-	op_CMP		db '	CMP$'
-	op_AAS		db '	AAS$'
-	op_DAS		db '	DAS$'
-	op_MUL		db '	MUL$'
-	op_IMUL		db '	IMUL$'
-	op_AAM		db '	AAM$'
-	op_DIV		db '	DIV$'
-	op_IDIV		db '	IDIV$'
-	op_AAD		db '	AAD$'
-	op_CBW		db '	CBW$'
-	op_CWD		db '	CWD$'
+	op_ADD		db 20 dup(' '), 'ADD$'
+	op_ADC		db 20 dup(' '), 'ADC$'
+	op_INC		db 20 dup(' '), 'INC$'
+	op_AAA		db 20 dup(' '), 'AAA$'
+	op_BAA		db 20 dup(' '), 'BAA$'	;intel vadina BAA, debugas vadina DAA
+	op_SUB		db 20 dup(' '), 'SUB$'
+	op_SSB		db 20 dup(' '), 'SSB$'	;intel vadina SSB, debugas vadina SBB
+	op_DEC		db 20 dup(' '), 'DEC$'
+	op_NEG		db 20 dup(' '), 'NEG$'
+	op_CMP		db 20 dup(' '), 'CMP$'
+	op_AAS		db 20 dup(' '), 'AAS$'
+	op_DAS		db 20 dup(' '), 'DAS$'
+	op_MUL		db 20 dup(' '), 'MUL$'
+	op_IMUL		db 20 dup(' '), 'IMUL$'
+	op_AAM		db 20 dup(' '), 'AAM$'
+	op_DIV		db 20 dup(' '), 'DIV$'
+	op_IDIV		db 20 dup(' '), 'IDIV$'
+	op_AAD		db 20 dup(' '), 'AAD$'
+	op_CBW		db 20 dup(' '), 'CBW$'
+	op_CWD		db 20 dup(' '), 'CWD$'
 	
-	op_NOT		db '	NOT$'
-	op_SHL		db '	SHL$'
-	op_SHR		db '	SHR$'
-	op_SAR		db '	SAR$'
-	op_ROL		db '	ROL$'
-	op_ROR		db '	ROR$'
-	op_RCL		db '	RCL$'
-	op_RCR		db '	RCR$'
-	op_AND		db '	AND$'
-	op_TEST		db '	TEST$'
-	op_OR		db '	OR$'
-	op_XOR		db '	XOR$'
-	op_REP		db '	REP$'
-	op_MOVS		db '	MOVS$'
-	op_CMPS		db '	CMPS$'
-	op_SCAS		db '	SCAS$'
-	op_LODS		db '	LODS$'
-	op_STOS		db '	STOS$'
-	op_CALL		db '	CALL$'
+	op_NOT		db 20 dup(' '), 'NOT$'
+	op_SHL		db 20 dup(' '), 'SHL$'
+	op_SHR		db 20 dup(' '), 'SHR$'
+	op_SAR		db 20 dup(' '), 'SAR$'
+	op_ROL		db 20 dup(' '), 'ROL$'
+	op_ROR		db 20 dup(' '), 'ROR$'
+	op_RCL		db 20 dup(' '), 'RCL$'
+	op_RCR		db 20 dup(' '), 'RCR$'
+	op_AND		db 20 dup(' '), 'AND$'
+	op_TEST		db 20 dup(' '), 'TEST$'
+	op_OR		db 20 dup(' '), 'OR$'
+	op_XOR		db 20 dup(' '), 'XOR$'
+	op_REP		db 20 dup(' '), 'REP$'
+	op_MOVS		db 20 dup(' '), 'MOVS$'
+	op_CMPS		db 20 dup(' '), 'CMPS$'
+	op_SCAS		db 20 dup(' '), 'SCAS$'
+	op_LODS		db 20 dup(' '), 'LODS$'
+	op_STOS		db 20 dup(' '), 'STOS$'
+	op_CALL		db 20 dup(' '), 'CALL$'
 	
-	op_JMP		db '	JMP$'
-	op_RET		db '	RET$'
-		op_RETF		db '	RETF$'
-	op_JE		db '	JE$'
-	op_JL		db '	JL$'
-	op_JLE		db '	JLE$'
-	op_JB		db '	JB$'
-	op_JBE		db '	JBE$'
-	op_JP		db '	JP$'
-	op_JO		db '	JO$'
-	op_JS		db '	JS$'
-	op_JNE		db '	JNE$'
-	op_JNL		db '	JNL$'
-	op_JG		db '	JG$'
-	op_JNB		db '	JNB$'
-	op_JA		db '	JA$'
-	op_JNP		db '	JNP$'
-	op_JNO		db '	JNO$'
-	op_JNS		db '	JNS$'
-	op_LOOP		db '	LOOP$'
-	op_LOOPE	db '	LOOPE$'
-	op_LOOPNE	db '	LOOPNE$'
-	op_JCXZ		db '	JCXZ$'
-	op_INT		db '	INT$'
-	op_INTO		db '	INTO$'
-	op_IRET		db '	IRET$'
+	op_JMP		db 20 dup(' '), 'JMP$'
+	op_RET		db 20 dup(' '), 'RET$'
+		op_RETF		db 20 dup(' '), 'RETF$'
+	op_JE		db 20 dup(' '), 'JE$'
+	op_JL		db 20 dup(' '), 'JL$'
+	op_JLE		db 20 dup(' '), 'JLE$'
+	op_JB		db 20 dup(' '), 'JB$'
+	op_JBE		db 20 dup(' '), 'JBE$'
+	op_JP		db 20 dup(' '), 'JP$'
+	op_JO		db 20 dup(' '), 'JO$'
+	op_JS		db 20 dup(' '), 'JS$'
+	op_JNE		db 20 dup(' '), 'JNE$'
+	op_JNL		db 20 dup(' '), 'JNL$'
+	op_JG		db 20 dup(' '), 'JG$'
+	op_JNB		db 20 dup(' '), 'JNB$'
+	op_JA		db 20 dup(' '), 'JA$'
+	op_JNP		db 20 dup(' '), 'JNP$'
+	op_JNO		db 20 dup(' '), 'JNO$'
+	op_JNS		db 20 dup(' '), 'JNS$'
+	op_LOOP		db 20 dup(' '), 'LOOP$'
+	op_LOOPE	db 20 dup(' '), 'LOOPE$'
+	op_LOOPNE	db 20 dup(' '), 'LOOPNE$'
+	op_JCXZ		db 20 dup(' '), 'JCXZ$'
+	op_INT		db 20 dup(' '), 'INT$'
+	op_INTO		db 20 dup(' '), 'INTO$'
+	op_IRET		db 20 dup(' '), 'IRET$'
 	
-	op_CLC		db '	CLC$'
-	op_CMC		db '	CMC$'
-	op_STC		db '	STC$'
-	op_CLD		db '	CLD$'
-	op_STD		db '	STD$'
-	op_CLI		db '	CLI$'
-	op_STI		db '	STI$'
-	op_HLT		db '	HLT$'
-	op_WAIT		db '	WAIT$'
-	op_ESC		db '	ESC$'		;neegzituoja????
-	op_LOCK		db '	LOCK$'
+	op_CLC		db 20 dup(' '), 'CLC$'
+	op_CMC		db 20 dup(' '), 'CMC$'
+	op_STC		db 20 dup(' '), 'STC$'
+	op_CLD		db 20 dup(' '), 'CLD$'
+	op_STD		db 20 dup(' '), 'STD$'
+	op_CLI		db 20 dup(' '), 'CLI$'
+	op_STI		db 20 dup(' '), 'STI$'
+	op_HLT		db 20 dup(' '), 'HLT$'
+	op_WAIT		db 20 dup(' '), 'WAIT$'
+	op_ESC		db 20 dup(' '), 'ESC$'		;neegzituoja????
+	op_LOCK		db 20 dup(' '), 'LOCK$'
 	
-	op_NOP		db '	NOP$'
+	op_NOP		db 20 dup(' '), 'NOP$'
 	op_UNUSED	db ' (unused)$'
-	op_unknown	db 09h, 'DB $'
+	op_unknown	db 20 dup(' '), 'DB $'
 	;								komandos
 	
 	;								visosFPUKomandos
-	op_FADD		db '	FADD$'		;~D8xx
-	op_FMUL		db '	FMUL$'
-	op_FCOM		db '	FCOM$'
-	op_FCOMP	db '	FCOMP$'
-	op_FSUB		db '	FSUB$'
-	op_FSUBR	db '	FSUBR$'
-	op_FDIV		db '	FDIV$'		;~D8xx
-	op_FDIVR	db '	FDIVR$'		;~D9xx
-	op_FLD		db '	FLD$'
-	op_FST		db '	FST$'
-	op_FSTP		db '	FSTP$'
-	op_FLDENV	db '	FLDENV$'
-	op_FLDCW	db '	FLDCW$'
-	op_FSTENV	db '	FSTENV$'
-		op_FNSTENV	db '	FNSTENV$'
-	op_FSTCW	db '	FSTCW$'
-		op_FNSTCW	db '	FNSTCW$'
-	op_FXCH		db '	FXCH$'
-	op_FCHS		db '	FCHS$'
-	op_FABS		db '	FABS$'
-	op_FTST		db '	FTST$'
-	op_FXAM		db '	FXAM$'
-	op_FLD1		db '	FLD1$'
-	op_FLDL2T	db '	FLDL2T$'
-	op_FLDL2E	db '	FLDL2E$'
-	op_FLDPI	db '	FLDPI$'
-	op_FLDLG2	db '	FLDLG2$'
-	op_FLDLN2	db '	FLDLN2$'
-	op_FLDZ		db '	FLDZ$'
-	op_F2XM1	db '	F2XM1$'
-	op_FYL2X	db '	FYL2X$'
-	op_FPTAN	db '	FPTAN$'
-	op_FPATAN	db '	FPATAN$'
-	op_FXTRAC	db '	FXTRAC$'
-	op_FPREM1	db '	FPREM1$'
-	op_FDECST	db '	FDECST$'
-	op_FINCST	db '	FINCST$'
-	op_FPREM	db '	FPREM$'
-	op_FYL2XP1	db '	FYL2XP1$'
-	op_FSQRT	db '	FSQRT$'
-	op_FSINCO	db '	FSINCO$'
-	op_FRNDIN	db '	FRNDIN$'
-	op_FSCALE	db '	FSCALE$'
-	op_FSIN		db '	FSIN$'
-	op_FCOS		db '	FCOS$'		;~D9xx
-	op_FIADD	db '	FIADD$'		;~DAxx
-	op_FIMUL	db '	FIMUL$'
-	op_FICOM	db '	FICOM$'
-	op_FICOMP	db '	FICOMP$'
-	op_FISUB	db '	FISUB$'
-	op_FISUBR	db '	FISUBR$'
-	op_FIDIV	db '	FIDIV$'
-	op_FIDIVR	db '	FIDIVR$'
-	op_FCMOVB	db '	FCMOVB$'
-		op_FCMOVBE	db '	FCMOVBE$'
-	op_FCMOVE	db '	FCMOVE$'
-	op_FCMOVU	db '	FCMOVU$'
-	op_FUCOMP	db '	FUCOMP$'
-		op_FUCOMPP	db '	FUCOMPP$'	;~DAxx
-	op_FILD		db '	FILD$'		;~DBxx
-	op_FIST		db '	FIST$'
-	op_FISTP	db '	FISTP$'
-	op_FCMOVN	db '	FCMOVN$'
-		op_FCMOVNB	db '	FCMOVNB$'
-		op_FCMOVNE	db '	FCMOVNE$'
-		op_FCMOVNBE	db '	FCMOVNBE$'
-		op_FCMOVNU	db '	FCMOVNU$'
-	op_FENI		db '	FENI$'
-		op_FNENI	db '	FNENI$'
-	op_FDISI	db '	FDISI$'
-		op_FNDISI	db '	FNDISI$'
-	op_FCLEX	db '	FCLEX$'
-		op_FNCLEX	db '	FNCLEX$'
-	op_FINIT	db '	FINIT$'
-		op_FNINIT	db '	FNINIT$'
-	op_FSETPM	db '	FSETPM$'
-		op_FNSETPM	db '	FNSETPM$'
-	op_FCOMI	db '	FCOMI$'		;~DBxx
-	op_FRSTOR	db '	FRSTOR$'	;~DDxx
-	op_FSAVE	db '	FSAVE$'
-		op_FNSAVE	db '	FNSAVE$'
-	op_FSTSW	db '	FSTSW$'
-		op_FNSTSW	db '	FNSTSW$'
-	op_FFREE	db '	FFREE$'		;~DDxx
-	op_FADDP	db '	FADDP$'		;~DExx
-	op_FMULP	db '	FMULP$'
-	op_FCOMPP	db '	FCOMPP$'
-	op_FSUBRP	db '	FSUBRP$'
-	op_FSUBP	db '	FSUBP$'
-	op_FDIVRP	db '	FDIVRP$'
-	op_FDIVP	db '	FDIVP$'		;~DExx
-	op_FBLD		db '	FBLD$'		;~DFxx
-	op_FBSTP	db '	FBSTP$'
-	op_FFREEP	db '	FFREEP$'
-	op_FCOMIP	db '	FCOMIP$'	;~DFxx
+	op_FADD		db 20 dup(' '), 'FADD$'		;~D8xx
+	op_FMUL		db 20 dup(' '), 'FMUL$'
+	op_FCOM		db 20 dup(' '), 'FCOM$'
+	op_FCOMP	db 20 dup(' '), 'FCOMP$'
+	op_FSUB		db 20 dup(' '), 'FSUB$'
+	op_FSUBR	db 20 dup(' '), 'FSUBR$'
+	op_FDIV		db 20 dup(' '), 'FDIV$'		;~D8xx
+	op_FDIVR	db 20 dup(' '), 'FDIVR$'	;~D9xx
+	op_FLD		db 20 dup(' '), 'FLD$'
+	op_FST		db 20 dup(' '), 'FST$'
+	op_FSTP		db 20 dup(' '), 'FSTP$'
+	op_FLDENV	db 20 dup(' '), 'FLDENV$'
+	op_FLDCW	db 20 dup(' '), 'FLDCW$'
+	op_FSTENV	db 20 dup(' '), 'FSTENV$'
+		op_FNSTENV	db 20 dup(' '), 'FNSTENV$'
+	op_FSTCW	db 20 dup(' '), 'FSTCW$'
+		op_FNSTCW	db 20 dup(' '), 'FNSTCW$'
+	op_FXCH		db 20 dup(' '), 'FXCH$'
+	op_FCHS		db 20 dup(' '), 'FCHS$'
+	op_FABS		db 20 dup(' '), 'FABS$'
+	op_FTST		db 20 dup(' '), 'FTST$'
+	op_FXAM		db 20 dup(' '), 'FXAM$'
+	op_FLD1		db 20 dup(' '), 'FLD1$'
+	op_FLDL2T	db 20 dup(' '), 'FLDL2T$'
+	op_FLDL2E	db 20 dup(' '), 'FLDL2E$'
+	op_FLDPI	db 20 dup(' '), 'FLDPI$'
+	op_FLDLG2	db 20 dup(' '), 'FLDLG2$'
+	op_FLDLN2	db 20 dup(' '), 'FLDLN2$'
+	op_FLDZ		db 20 dup(' '), 'FLDZ$'
+	op_F2XM1	db 20 dup(' '), 'F2XM1$'
+	op_FYL2X	db 20 dup(' '), 'FYL2X$'
+	op_FPTAN	db 20 dup(' '), 'FPTAN$'
+	op_FPATAN	db 20 dup(' '), 'FPATAN$'
+	op_FXTRAC	db 20 dup(' '), 'FXTRAC$'
+	op_FPREM1	db 20 dup(' '), 'FPREM1$'
+	op_FDECST	db 20 dup(' '), 'FDECST$'
+	op_FINCST	db 20 dup(' '), 'FINCST$'
+	op_FPREM	db 20 dup(' '), 'FPREM$'
+	op_FYL2XP1	db 20 dup(' '), 'FYL2XP1$'
+	op_FSQRT	db 20 dup(' '), 'FSQRT$'
+	op_FSINCO	db 20 dup(' '), 'FSINCO$'
+	op_FRNDIN	db 20 dup(' '), 'FRNDIN$'
+	op_FSCALE	db 20 dup(' '), 'FSCALE$'
+	op_FSIN		db 20 dup(' '), 'FSIN$'
+	op_FCOS		db 20 dup(' '), 'FCOS$'		;~D9xx
+	op_FIADD	db 20 dup(' '), 'FIADD$'	;~DAxx
+	op_FIMUL	db 20 dup(' '), 'FIMUL$'
+	op_FICOM	db 20 dup(' '), 'FICOM$'
+	op_FICOMP	db 20 dup(' '), 'FICOMP$'
+	op_FISUB	db 20 dup(' '), 'FISUB$'
+	op_FISUBR	db 20 dup(' '), 'FISUBR$'
+	op_FIDIV	db 20 dup(' '), 'FIDIV$'
+	op_FIDIVR	db 20 dup(' '), 'FIDIVR$'
+	op_FCMOVB	db 20 dup(' '), 'FCMOVB$'
+		op_FCMOVBE	db 20 dup(' '), 'FCMOVBE$'
+	op_FCMOVE	db 20 dup(' '), 'FCMOVE$'
+	op_FCMOVU	db 20 dup(' '), 'FCMOVU$'
+	op_FUCOMP	db 20 dup(' '), 'FUCOMP$'
+		op_FUCOMPP	db 20 dup(' '), 'FUCOMPP$'	;~DAxx
+	op_FILD		db 20 dup(' '), 'FILD$'		;~DBxx
+	op_FIST		db 20 dup(' '), 'FIST$'
+	op_FISTP	db 20 dup(' '), 'FISTP$'
+	op_FCMOVN	db 20 dup(' '), 'FCMOVN$'
+		op_FCMOVNB	db 20 dup(' '), 'FCMOVNB$'
+		op_FCMOVNE	db 20 dup(' '), 'FCMOVNE$'
+		op_FCMOVNBE	db 20 dup(' '), 'FCMOVNBE$'
+		op_FCMOVNU	db 20 dup(' '), 'FCMOVNU$'
+	op_FENI		db 20 dup(' '), 'FENI$'
+		op_FNENI	db 20 dup(' '), 'FNENI$'
+	op_FDISI	db 20 dup(' '), 'FDISI$'
+		op_FNDISI	db 20 dup(' '), 'FNDISI$'
+	op_FCLEX	db 20 dup(' '), 'FCLEX$'
+		op_FNCLEX	db 20 dup(' '), 'FNCLEX$'
+	op_FINIT	db 20 dup(' '), 'FINIT$'
+		op_FNINIT	db 20 dup(' '), 'FNINIT$'
+	op_FSETPM	db 20 dup(' '), 'FSETPM$'
+		op_FNSETPM	db 20 dup(' '), 'FNSETPM$'
+	op_FCOMI	db 20 dup(' '), 'FCOMI$'		;~DBxx
+	op_FRSTOR	db 20 dup(' '), 'FRSTOR$'	;~DDxx
+	op_FSAVE	db 20 dup(' '), 'FSAVE$'
+		op_FNSAVE	db 20 dup(' '), 'FNSAVE$'
+	op_FSTSW	db 20 dup(' '), 'FSTSW$'
+		op_FNSTSW	db 20 dup(' '), 'FNSTSW$'
+	op_FFREE	db 20 dup(' '), 'FFREE$'	;~DDxx
+	op_FADDP	db 20 dup(' '), 'FADDP$'	;~DExx
+	op_FMULP	db 20 dup(' '), 'FMULP$'
+	op_FCOMPP	db 20 dup(' '), 'FCOMPP$'
+	op_FSUBRP	db 20 dup(' '), 'FSUBRP$'
+	op_FSUBP	db 20 dup(' '), 'FSUBP$'
+	op_FDIVRP	db 20 dup(' '), 'FDIVRP$'
+	op_FDIVP	db 20 dup(' '), 'FDIVP$'	;~DExx
+	op_FBLD		db 20 dup(' '), 'FBLD$'		;~DFxx
+	op_FBSTP	db 20 dup(' '), 'FBSTP$'
+	op_FFREEP	db 20 dup(' '), 'FFREEP$'
+	op_FCOMIP	db 20 dup(' '), 'FCOMIP$'	;~DFxx
 	
-	op_FNOP		db '	FNOP$'
+	op_FNOP		db 20 dup(' '), 'FNOP$'
 	FPU_ST		db ' ST$'
 	;								visosFPUKomandos
 	
@@ -269,10 +271,14 @@
 	segRegSS db ' SS$'
 	segRegDS db ' DS$'
 	
-	segESUnused db '	SEG ES (unused)$'
-	segCSUnused db '	SEG CS (unused)$'
-	segSSUnused db '	SEG SS (unused)$'
-	segDSUnused db '	SEG DS (unused)$'
+	segRegFS db ' FS$'
+	
+	segESUnused db 18 dup(' '), 'SEG ES (unused)$'
+	segCSUnused db 18 dup(' '), 'SEG CS (unused)$'
+	segSSUnused db 18 dup(' '), 'SEG SS (unused)$'
+	segDSUnused db 18 dup(' '), 'SEG DS (unused)$'
+	
+	segFSUnused db 18 dup(' '), 'SEG FS (unused)$'
 	;								registrai
 	
 	;								EA calc
@@ -620,52 +626,104 @@ locals @@
 		pop ax
 		ret
 	endp
+	updateCSIP proc
+		push ax
+		push bx
+		mov bl, 010h
+		
+		mov ah, 00h
+		mov al, byte ptr[currentIP+1]
+		div bl
+		cmp al, 0Ah
+		jb @@numberALIP1
+		add al, 037h
+		jmp @@asciidALIP1
+		@@numberALIP1:
+		add al, '0'
+		@@asciidALIP1:
+		cmp ah, 0Ah
+		jb @@numberAHIP1
+		add ah, 037h
+		jmp @@asciidAHIP1
+		@@numberAHIP1:
+		add ah, '0'
+		@@asciidAHIP1:
+		mov byte ptr[prnThisIP], al
+		mov byte ptr[prnThisIP+1], ah
+		
+		mov ah, 00h
+		mov al, byte ptr[currentIP]
+		div bl
+		cmp al, 0Ah
+		jb @@numberALIP0
+		add al, 037h
+		jmp @@asciidALIP0
+		@@numberALIP0:
+		add al, '0'
+		@@asciidALIP0:
+		cmp ah, 0Ah
+		jb @@numberAHIP0
+		add ah, 037h
+		jmp @@asciidAHIP0
+		@@numberAHIP0:
+		add ah, '0'
+		@@asciidAHIP0:
+		mov byte ptr[prnThisIP+2], al
+		mov byte ptr[prnThisIP+3], ah
+		
+		pop bx
+		pop ax
+		ret
+	endp
 	
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	decipher proc
 		push ax
-		push si
+		push bx
 		
+		@@reDecipher:
+		call updateCSIP
 		call readByteMakeBinaryUno
 		
-		mov al, 07h
-		call printHex
-		mov al, 034h
-		call printHex
-		printChar ':'
-		mov al, byte ptr[currentIP+1]
-		call printHex
-		mov al, byte ptr[currentIP]
-		call printHex
-		printChar ' '
-		
+		xor bx, bx
+		mov bl, byte ptr[redirectByte]
 		cmp byte ptr[unoByte], 026h
 		jne @@notRedirectToES
-		mov byte ptr[redirectByte+1], 026h
+		mov byte ptr[redirectByte+bx+1], 026h
 		jmp @@redirection
 		@@notRedirectToES:
 		cmp byte ptr[unoByte], 02Eh
 		jne @@notRedirectToCS
-		mov byte ptr[redirectByte+1], 02Eh
+		mov byte ptr[redirectByte+bx+1], 02Eh
 		jmp @@redirection
 		@@notRedirectToCS:
 		cmp byte ptr[unoByte], 036h
 		jne @@notRedirectToSS
-		mov byte ptr[redirectByte+1], 026h
+		mov byte ptr[redirectByte+bx+1], 026h
 		jmp @@redirection
 		@@notRedirectToSS:
 		cmp byte ptr[unoByte], 03Eh
-		jne @@notRedirection
-		mov byte ptr[redirectByte+1], 03Eh
+		jne @@notRedirectToDS
+		mov byte ptr[redirectByte+bx+1], 03Eh
 		jmp @@redirection
+		@@notRedirectToDS:
+		cmp byte ptr[unoByte], 064h
+		jne @@notRedirectToFS
+		mov byte ptr[redirectByte+bx+1], 064h
+		jmp @@redirection
+		@@notRedirectToFS:
 		
 		jmp @@notRedirection
 		@@redirection:
-		mov byte ptr[redirectByte], 01h
-		call readByteMakeBinaryUno
+		cmp bl, 01h
+		jne @@notStackedRedirect
+		call handleRedirect
+		@@notStackedRedirect:
+		inc byte ptr[redirectByte]
+		jmp @@reDecipher
 		@@notRedirection:
 		
-		pop si
+		pop bx
 		pop ax
 ;============================================================================================================================================================================================================
 		
@@ -1341,13 +1399,13 @@ locals @@
 					printChar ' '
 					printImmediate '1'
 					ret
-					@@notAAD:				;D6 ~ N/A
+					@@notAAD:
 					
 					cmp byte ptr[unoByte], 0D7h
 					jne @@notXLAT
 					printStr op_XLAT
 					ret
-					@@notXLAT:				;D8, D9, DA, DB, DC, DD, DE, DF ~ FPU su pletiniais
+					@@notXLAT:
 					
 					cmp byte ptr[unoByte], 0D8h
 					jb @@notD8toDF
@@ -2921,7 +2979,7 @@ locals @@
 				ret
 				@@notFUCOMPmod11:
 				
-				cmp byte ptr[dosByte], 0E0h
+				cmp byte ptr[dosByte], 0D9h
 				jne @@notFCOMPP
 				printStr op_FCOMPP
 				ret
@@ -3419,9 +3477,9 @@ locals @@
 			printStr eaQWordPtr
 		@@printed:
 		
-		cmp byte ptr[redirectByte], 01h
-		jne @@noRedirection
-		mov byte ptr[redirectByte], 00h
+		cmp byte ptr[redirectByte], 00h
+		je @@noRedirection
+		dec byte ptr[redirectByte]
 		cmp byte ptr[redirectByte+1], 026h
 		jne @@notRedirectToES
 		printStr segRegES
@@ -3437,7 +3495,16 @@ locals @@
 		printStr segRegSS
 		jmp @@redirected
 		@@notRedirectToSS:
+		cmp byte ptr[redirectByte+1], 03Eh
+		jne @@notRedirectToDS
 		printStr segRegDS
+		jmp @@redirected
+		@@notRedirectToDS:
+		cmp byte ptr[redirectByte+1], 064h
+		jne @@notRedirectToFS
+		printStr segRegFS
+		jmp @@redirected
+		@@notRedirectToFS:
 		@@redirected:
 		printChar ':'
 		@@noRedirection:
@@ -3639,7 +3706,7 @@ locals @@
 		ret
 	endp
 	handleRedirect proc
-		mov byte ptr[redirectByte], 00h
+		dec byte ptr[redirectByte]
 		lea si, printThis
 		lea di, printThisCopy
 		mov ch, 00h
@@ -3652,37 +3719,61 @@ locals @@
 		lea si, operationBytes+1
 		lea di, operationBytes
 		rep movsb
-		printChar ':'
-		mov al, byte ptr[currentIP+1]
-		call printHex
-		mov al, byte ptr[currentIP]
-		call printHex
-		printChar ' '
+		call updateCSIP
+		
 		mov al, byte ptr[redirectByte+1]
 		call printHex
-		cmp al, 'E'
+		cmp al, 026h
 		jne @@notHangingES
 		printStr segESUnused
 		jmp @@hangingRedirect
 		@@notHangingES:
-		cmp al, 'C'
+		cmp al, 02Eh
 		jne @@notHangingCS
 		printStr segCSUnused
 		jmp @@hangingRedirect
 		@@notHangingCS:
-		cmp al, 'S'
+		cmp al, 036h
 		jne @@notHangingSS
 		printStr segSSUnused
 		jmp @@hangingRedirect
 		@@notHangingSS:
+		cmp al, 03Eh
+		jne @@notHangingDS
 		printStr segDSUnused
+		jmp @@hangingRedirect
+		@@notHangingDS:
+		cmp al, 064h
+		jne @@notHangingFS
+		printStr segFSUnused
+		jmp @@hangingRedirect
+		@@notHangingFS:
 		@@hangingRedirect:
 		printChar 0Ah
+		
+		lea dx, prnThisCS
+		mov cl, byte ptr[printHowMany]
+		add cl, 0Ah
+		mov bx, word ptr[outFilePtr]
+		mov ah, 040h
+		int 21h
+		jnc @@writeSuccess
+		printStr errorWriting
+		.exit
+		@@writeSuccess:
+		
 		lea si, printThisCopy
 		lea di, printThis
 		mov cl, byte ptr[printHowManyCopy]
 		mov byte ptr[printHowMany], cl
 		rep movsb
+		
+		cmp byte ptr[redirectByte], 01h
+		jne @@fin
+		mov al, byte ptr[redirectByte+2]
+		mov byte ptr[redirectByte], al
+		@@fin:
+		inc word ptr[currentIP]
 		ret
 	endp
 ;__________________________________________________________________________________________________
@@ -3742,58 +3833,42 @@ main:
 	mov ax, 03C00h
 	lea dx, programParameter2
 	int 21h
-	jnc @@createSuccess
+	jnc createSuccess
 	printStrNoWrite errorCreatingOutputFile
 	.exit
-	@@createSuccess:
+	createSuccess:
 	mov ax, 03D01h
 	lea dx, programParameter2
 	int 21h
-	jnc @@outFileOpened
+	jnc outFileOpened
 	printStrNoWrite errorOpeningOutputFile
 	.exit
-	@@outFileOpened:
+	outFileOpened:
 	mov word ptr[outFilePtr], ax
 	
 	push ds
 	pop es
 	cld
 	
+	
+	
 	byteByByte:
-	mov ch, 00h
-	mov cl, byte ptr[printHowMany]
 	mov byte ptr[printHowMany], 00h
-	mov al, 00h
-	lea di, printThis
-	repne stosb
 	mov byte ptr[operationByteCount], 00h
 	
 	call decipher
+	printChar 0Ah
 	
-	cmp byte ptr[redirectByte], 01h
-	jne @@notHangingRedirect
+	cmp byte ptr[redirectByte], 00h
+	je notHangingRedirect
 	call handleRedirect
-	@@notHangingRedirect:
+	notHangingRedirect:
 	
-	mov ah, 00h
-	mov al, byte ptr[printHowMany]
-	mov cx, ax
-	lea si, printThis
-	add si, ax
-	mov di, si
-	mov al, byte ptr[operationByteCount]
-	add ax, ax
-	add di, ax
-	cmp byte ptr[operationByteCount], 02h
-	ja lessTabs
-	inc di
-	lessTabs:
-	sub cx, 09h
-	std
-	rep movsb
-	cld
+	mov cl, byte ptr[operationByteCount]
+	add word ptr[currentIP], cx
+	
 	mov ah, byte ptr[printHowMany]
-	mov byte ptr[printHowMany], 0Ah
+	mov byte ptr[printHowMany], 00h
 	mov ch, 00h
 	mov cl, byte ptr[operationByteCount]
 	mov bx, 0000h
@@ -3802,39 +3877,25 @@ main:
 	call printHex
 	inc bx
 	loop printAllHexes
-	
-	cmp byte ptr[operationByteCount], 02h
-	ja noMoreTabs
-	printChar 09h
-	noMoreTabs:
-	
-	sub ah, 0Ah
-	add byte ptr[printHowMany], ah
-	
-	mov cl, byte ptr[operationByteCount]
-	add word ptr[currentIP], cx
+	mov byte ptr[printHowMany], ah
+	add byte ptr[printHowMany], 0Ah		;nes CS:IP uzima 10 simboliu
 	
 	mov bh, 00h
 	mov bl, byte ptr[printHowMany]
-	mov byte ptr[printThis+bx+1], '$'
-	printStrNoWrite printThis
-	printCharNoWrite 0Ah
-	
-	printChar 0Ah
-	
-	lea dx, printThis
+	mov byte ptr[prnThisCS+bx], '$'
+	printStrNoWrite prnThisCS
+	lea dx, prnThisCS
 	mov cl, byte ptr[printHowMany]
 	mov bx, word ptr[outFilePtr]
 	mov ah, 040h
 	int 21h
-	jnc @@writeSuccess
+	jnc writeSuccess
 	printStr errorWriting
 	.exit
-	@@writeSuccess:
+	writeSuccess:
 	cmp byte ptr[reachedEOF], 01h
 	je finished
 	jmp byteByByte
-	
 	finished:
 	
 	mov bx, word ptr[filePtr]
