@@ -926,12 +926,12 @@ locals @@
 					printStr segRegES
 					ret
 					@@notES:
-					cmp word ptr[OPKByteBinary+3], 0001h
+					cmp word ptr[OPKByteBinary+3], 0100h
 					jne @@notCS
 					printStr segRegCS
 					ret
 					@@notCS:
-					cmp word ptr[OPKByteBinary+3], 0100h
+					cmp word ptr[OPKByteBinary+3], 0001h
 					jne @@notSS
 					printStr segRegSS
 					ret
@@ -2308,31 +2308,31 @@ locals @@
 				ret
 				@@notFXAM:
 				
-				cmp byte ptr[dosByte], 0E8h	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0E8h	;FPU transcendentine
 				jne @@notFLD1
 				printStr op_FLD1
 				ret
 				@@notFLD1:
 				
-				cmp byte ptr[dosByte], 0E9h	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0E9h	;FPU transcendentine
 				jne @@notFLDL2T
 				printStr op_FLDL2T
 				ret
 				@@notFLDL2T:
 				
-				cmp byte ptr[dosByte], 0EAh	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0EAh	;FPU transcendentine
 				jne @@notFLDL2E
 				printStr op_FLDL2E
 				ret
 				@@notFLDL2E:
 				
-				cmp byte ptr[dosByte], 0EBh	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0EBh	;FPU transcendentine
 				jne @@notFLDPI
 				printStr op_FLDPI
 				ret
 				@@notFLDPI:
 				
-				cmp byte ptr[dosByte], 0ECh	;klasifikuota kaip transcendentine		;<<<<<<<<<<<<
+				cmp byte ptr[dosByte], 0ECh	;FPU transcendentine
 				jne @@notFLDLG2
 				printStr op_FLDLG2
 				ret
@@ -2344,7 +2344,7 @@ locals @@
 				ret
 				@@notFLDLN2:
 				
-				cmp byte ptr[dosByte], 0EEh	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0EEh	;FPU transcendentine
 				jne @@notFLDZ
 				printStr op_FLDZ
 				ret
@@ -2353,25 +2353,25 @@ locals @@
 				call printUnknownReuseDos
 			@@FARF0toFF:
 				
-				cmp byte ptr[dosByte], 0F0h	;klasifikuota kaip transcendentine		;<<<<<<<<<<<<
+				cmp byte ptr[dosByte], 0F0h	;FPU transcendentine
 				jne @@notF2XM1
 				printStr op_F2XM1
 				ret
 				@@notF2XM1:
 				
-				cmp byte ptr[dosByte], 0F1h	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0F1h	;FPU transcendentine
 				jne @@notFYL2X
 				printStr op_FYL2X
 				ret
 				@@notFYL2X:
 				
-				cmp byte ptr[dosByte], 0F2h	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0F2h	;FPU transcendentine
 				jne @@notFPTAN
 				printStr op_FPTAN
 				ret
 				@@notFPTAN:
 				
-				cmp byte ptr[dosByte], 0F3h	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0F3h	;FPU transcendentine
 				jne @@notFPATAN
 				printStr op_FPATAN
 				ret
@@ -2407,19 +2407,19 @@ locals @@
 				ret
 				@@notFPREM:
 				
-				cmp byte ptr[dosByte], 0F9h	;klasifikuota kaip transcendentine
+				cmp byte ptr[dosByte], 0F9h	;FPU transcendentine
 				jne @@notFYL2XP1
 				printStr op_FYL2XP1
 				ret
 				@@notFYL2XP1:
 				
-				cmp byte ptr[dosByte], 0FAh		;<<<<<<<<<<<<
+				cmp byte ptr[dosByte], 0FAh
 				jne @@notFSQRT
 				printStr op_FSQRT
 				ret
 				@@notFSQRT:
 				
-				cmp byte ptr[dosByte], 0FBh		;<<<<<<<<<<<<
+				cmp byte ptr[dosByte], 0FBh
 				jne @@notFSINCO
 				printStr op_FSINCO
 				ret

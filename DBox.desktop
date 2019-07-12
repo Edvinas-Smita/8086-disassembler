@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Terminal=true
+Name=Click-Script
+Icon=utilities-terminal
+Exec=dosbox -c "mount C /home/edis" -c "C:" -c "set PATH=Z:/;/tasm" -c "cd Desktop/SYNC/ASM"
+Categories=Application;
+Name[en_US]=DBox

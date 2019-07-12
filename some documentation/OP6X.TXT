@@ -1,0 +1,20 @@
+-u100
+072B:0100 C3                RET
+072B:0101 61                POPA
+072B:0102 6200              BOUND   AX,[BX+SI]
+072B:0104 6300              ARPL    [BX+SI],AX
+072B:0106 64                SEG     FS (unused)
+072B:0107 65                SEG     GS (unused)
+072B:0108 66                DB      66
+072B:0109 670000            ADD     [EAX],AL
+072B:010C 680000            PUSH    WORD 0000
+072B:010F 69000000          IMUL    AX,[BX+SI],0000
+072B:0113 6A00              PUSH    +00
+072B:0115 6B0000            IMUL    AX,[BX+SI],+00
+072B:0118 6C                INSB
+072B:0119 6D                INSW
+072B:011A 6E                OUTSB
+072B:011B 6F                OUTSW
+072B:011C 0000              ADD     [BX+SI],AL
+072B:011E 0000              ADD     [BX+SI],AL
+-q
